@@ -725,7 +725,16 @@ function monthsLabel(months) {
   return parts.join(', ');
 }
 
+function isDefaultZone(zone) {
+  return Boolean(zone.is_default) || (
+    (zone.days || []).length === 7 && !(zone.months || []).length &&
+    (zone.intervals || []).length === 1 && zone.intervals[0] === '00:00-24:00' &&
+    !zone.exclude_holidays
+  );
+}
+
 function zoneSchedule(zone) {
+  if (isDefaultZone(zone)) return 'Pozostałe godziny — strefa domyślna';
   const days = (zone.days || []).map((day) => DAYS[day]).join(', ');
   const intervals = (zone.intervals || []).join(', ');
   const months = monthsLabel(zone.months);
@@ -749,10 +758,10 @@ function renderTariffGrid() {
     const config = tariff.config || {};
     const range = tariffPriceRange(tariff);
     const fixed = (config.fixed_fees || []).reduce((sum, fee) => sum + (Number(fee.net_monthly) || 0), 0);
-    const zones = config.zones || [];
+    const zones = (config.zones || []).slice().sort((a, b) => Number(isDefaultZone(a)) - Number(isDefaultZone(b)));
     const pills = zones.slice(0, 5).map((zone) => `
       <span class="zone-pill" title="${escapeHtml(zoneSchedule(zone))}">
-        ${escapeHtml(zone.name)}
+        ${escapeHtml(isDefaultZone(zone) && zone.name === 'Pozaszczyt' ? 'Pozostałe godziny — strefa domyślna' : zone.name)}
         <b>${formatNumber((Number(zone.energy_net) || 0) + (Number(zone.distribution_net) || 0), 2)}</b>
       </span>`).join('');
 
@@ -844,6 +853,7 @@ function newZoneId() {
 }
 
 function zoneEditorHtml(zone = {}) {
+  const isDefault = isDefaultZone(zone);
   const id = zone.id || newZoneId();
   const days = new Set(Array.isArray(zone.days) ? zone.days : [0, 1, 2, 3, 4, 5, 6]);
   const monthSet = new Set(Array.isArray(zone.months) ? zone.months.map(Number) : []);
@@ -860,9 +870,14 @@ function zoneEditorHtml(zone = {}) {
   return `
     <div class="zone-editor" data-zone-id="${escapeHtml(id)}">
       <div class="zone-editor-head">
-        <input class="input zone-name" value="${escapeHtml(zone.name || '')}" maxlength="80" placeholder="Nazwa strefy, np. Szczyt">
+        <input class="input zone-name" value="${escapeHtml(isDefault && zone.name === 'Pozaszczyt' ? 'Pozostałe godziny — strefa domyślna' : (zone.name || ''))}" maxlength="80" placeholder="Nazwa strefy, np. Szczyt">
         <button type="button" class="icon-button small" data-remove-zone title="Usuń strefę" aria-label="Usuń strefę">✕</button>
       </div>
+      <label class="check-row">
+        <input type="checkbox" class="zone-default" ${isDefault ? 'checked' : ''}>
+        Pozostałe godziny — strefa domyślna
+      </label>
+      <p class="field-hint">Strefa domyślna jest zawsze sprawdzana na końcu. Obejmuje czas poza pozostałymi strefami, także w święta.</p>
       <div class="form-grid">
         <label class="field">
           <span class="field-label">Dni tygodnia</span>
@@ -932,7 +947,7 @@ function defaultTariffConfig() {
 function openTariffEditor(tariff) {
   state.editingTariff = tariff;
   const config = tariff ? clone(tariff.config) : defaultTariffConfig();
-  const zones = Array.isArray(config.zones) ? config.zones : [];
+  const zones = Array.isArray(config.zones) ? config.zones.slice().sort((a, b) => Number(isDefaultZone(a)) - Number(isDefaultZone(b))) : [];
   const fixedFees = Array.isArray(config.fixed_fees) ? config.fixed_fees : [];
   const variableFees = Array.isArray(config.variable_fees) ? config.variable_fees : [];
 
@@ -966,7 +981,7 @@ function openTariffEditor(tariff) {
               <div class="group-head">
                 <div>
                   <h3>Strefy czasowe</h3>
-                  <p class="muted small">Kolejność ma znaczenie: pierwsza pasująca strefa wygrywa. Ostatnia powinna pokrywać całą dobę.</p>
+                  <p class="muted small">Pierwsza pasująca strefa wygrywa. Strefa domyślna jest automatycznie ustawiana i sprawdzana na końcu.</p>
                 </div>
                 <button type="button" class="button ghost" data-add-zone>+ Dodaj strefę</button>
               </div>
@@ -1034,6 +1049,7 @@ function openTariffEditor(tariff) {
         </div>
       </form>
     </div>`);
+  $$('.zone-editor', $('#zone-list')).forEach(syncDefaultZoneEditor);
 }
 
 function showFormError(message) {
@@ -1058,6 +1074,19 @@ function readFees(form, containerId, key) {
   return fees;
 }
 
+function syncDefaultZoneEditor(row) {
+  const enabled = $('.zone-default', row).checked;
+  $$('.day-input, .month-input, .zone-intervals, .zone-holidays', row).forEach((input) => {
+    input.disabled = enabled;
+  });
+  if (enabled) {
+    $$('.day-input', row).forEach((input) => { input.checked = true; });
+    $$('.month-input', row).forEach((input) => { input.checked = false; });
+    $('.zone-intervals', row).value = '00:00-24:00';
+    $('.zone-holidays', row).checked = false;
+  }
+}
+
 async function saveTariffForm(form) {
   const errorBox = $('#tariff-form-error');
   errorBox?.classList.remove('is-visible');
@@ -1068,6 +1097,7 @@ async function saveTariffForm(form) {
     const description = $('#tariff-description').value.trim();
 
     const zones = $$('.zone-editor', form).map((element) => {
+      const isDefault = $('.zone-default', element).checked;
       const zoneName = $('.zone-name', element).value.trim();
       const days = $$('.day-input:checked', element).map((input) => Number(input.value));
       const months = $$('.month-input:checked', element).map((input) => Number(input.value));
@@ -1079,24 +1109,27 @@ async function saveTariffForm(form) {
       const distribution = Number($('.zone-distribution', element).value);
 
       if (!zoneName) throw new Error('Każda strefa musi mieć nazwę.');
-      if (!days.length) throw new Error(`Strefa „${zoneName}” nie ma wybranych dni.`);
-      if (!intervals.length) throw new Error(`Strefa „${zoneName}” nie ma przedziałów godzinowych.`);
+      if (!isDefault && !days.length) throw new Error(`Strefa „${zoneName}” nie ma wybranych dni.`);
+      if (!isDefault && !intervals.length) throw new Error(`Strefa „${zoneName}” nie ma przedziałów godzinowych.`);
       if (!Number.isFinite(energy) || energy < 0 || energy > 10) throw new Error(`Strefa „${zoneName}”: nieprawidłowa cena energii.`);
       if (!Number.isFinite(distribution) || distribution < 0 || distribution > 10) throw new Error(`Strefa „${zoneName}”: nieprawidłowa cena dystrybucji.`);
 
       return {
         id: element.dataset.zoneId || newZoneId(),
         name: zoneName,
-        days,
-        intervals,
-        ...(months.length && months.length < 12 ? { months } : {}),
+        is_default: isDefault,
+        days: isDefault ? [0, 1, 2, 3, 4, 5, 6] : days,
+        intervals: isDefault ? ['00:00-24:00'] : intervals,
+        ...(!isDefault && months.length && months.length < 12 ? { months } : {}),
         energy_net: energy,
         distribution_net: distribution,
-        exclude_holidays: $('.zone-holidays', element).checked,
+        exclude_holidays: !isDefault && $('.zone-holidays', element).checked,
       };
     });
 
     if (!zones.length) throw new Error('Dodaj co najmniej jedną strefę.');
+    if (zones.filter(isDefaultZone).length > 1) throw new Error('Taryfa może mieć tylko jedną strefę domyślną. Zmień godziny lub dni drugiej strefy całodobowej.');
+    zones.sort((a, b) => Number(isDefaultZone(a)) - Number(isDefaultZone(b)));
 
     const excise = Number($('#tariff-excise').value);
     const vat = Number($('#tariff-vat').value);
@@ -1156,6 +1189,20 @@ async function saveTariffForm(form) {
 function bindModalEvents() {
   const root = $('#modal-root');
 
+  root.addEventListener('change', (event) => {
+    if (!event.target.matches('.zone-default')) return;
+    const row = event.target.closest('.zone-editor');
+    if (event.target.checked) {
+      if ($$('.zone-default:checked', root).length > 1) {
+        event.target.checked = false;
+        toast('Najpierw wyłącz oznaczenie dotychczasowej strefy domyślnej.', 'error');
+        return;
+      }
+      $('#zone-list').append(row);
+    }
+    syncDefaultZoneEditor(row);
+  });
+
   root.addEventListener('click', (event) => {
     if (event.target.closest('[data-close]')) {
       closeModal();
@@ -1164,8 +1211,11 @@ function bindModalEvents() {
 
     const addZone = event.target.closest('[data-add-zone]');
     if (addZone) {
-      $('#zone-list').insertAdjacentHTML('beforeend', zoneEditorHtml({}));
-      $('#zone-list .zone-editor:last-child .zone-name')?.focus();
+      const fallback = $('#zone-list .zone-default:checked')?.closest('.zone-editor');
+      if (fallback) fallback.insertAdjacentHTML('beforebegin', zoneEditorHtml({}));
+      else $('#zone-list').insertAdjacentHTML('beforeend', zoneEditorHtml({}));
+      const rows = $$('.zone-editor', $('#zone-list'));
+      rows.findLast((row) => !$('.zone-default', row).checked)?.querySelector('.zone-name')?.focus();
       return;
     }
 

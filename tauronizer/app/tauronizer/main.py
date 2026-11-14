@@ -102,7 +102,14 @@ def _ha(request: Request) -> HAClient:
 
 def _validated_config(payload: TariffCreate) -> dict[str, Any]:
     config = payload.config.model_dump()
-    compile_zones(config)
+    compiled = compile_zones(config)
+    by_id = {zone["id"]: zone for zone in config["zones"]}
+    config["zones"] = [by_id[zone.id] for zone in compiled]
+    for zone, rule in zip(config["zones"], compiled):
+        zone["is_default"] = rule.is_default
+        if rule.is_default:
+            zone.update(days=list(range(7)), intervals=["00:00-24:00"],
+                        months=None, exclude_holidays=False)
     return config
 
 

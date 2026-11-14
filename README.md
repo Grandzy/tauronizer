@@ -1,3 +1,5 @@
+> **Disclaimer:** Aplikacja powstała przy użyciu AI i jak typowy AI-owy wysryw może zawierać błędy. Sprawdzaj wyniki, stawki i ustawienia przed podejmowaniem decyzji.
+
 # Tauronizer
 
 [![Otwórz Home Assistant i dodaj repozytorium dodatków z Tauronizerem](https://my.home-assistant.io/badges/supervisor_add_addon_repository.svg)](https://my.home-assistant.io/redirect/supervisor_add_addon_repository/?repository_url=https%3A%2F%2Fgithub.com%2Fdirek%2Ftauronizer)
@@ -15,20 +17,20 @@ profilu zużycia — w wybranym okresie i w przeliczeniu na rok.
 > Wszystkie ceny konfiguracyjne są netto, energia bez akcyzy; VAT doliczamy
 > do końcowej sumy netto. Sprawdź rodzaj umowy, liczbę faz i cykl rozliczeń.
 
-## Nowości w 0.3.0
+## Przykładowa analiza
 
-- Aktualne ceny netto Taurona na 2026 rok dla G11, G12, G12w i G13.
-- Opłata mocowa jako miesięczny ryczałt z czterema progami zużycia;
-  konfiguracja poboru kwalifikującego i stawek, z możliwością szacowania progu.
-- Uzupełniona opłata jakościowa, aktualne OZE i kogeneracyjna oraz usunięta
-  opłata przejściowa.
-- Poprawne strefy weekendowe G12, ceny stref G13 i obsługa Wigilii od 2025 r.
-- Czytelne rozbicie rachunku: składniki netto, osobna akcyza, VAT doliczany
-  na końcu i suma brutto.
-- Zachowanie własnych taryf i edytowanych presetów także przy kolejnych
-  aktualizacjach.
+![Przykładowa analiza zużycia i porównanie taryf w Tauronizerze](docs/images/przykladowa-analiza.jpg)
 
-[Opis wydania 0.3.0](https://github.com/direk/tauronizer/releases/tag/v0.3.0)
+Zrzut przedstawia dane demonstracyjne, a nie rzeczywiste zużycie użytkownika.
+
+## Nowości w 0.3.1
+
+- Oznaczenie „Pozostałe godziny — strefa domyślna” w edytorze taryfy.
+- Strefa domyślna zawsze jest sprawdzana na końcu, niezależnie od kolejności zapisanych stref.
+- Zablokowany harmonogram strefy domyślnej i walidacja zapobiegająca dodaniu dwóch takich stref.
+- Automatyczne rozpoznawanie strefy domyślnej w istniejących taryfach.
+
+[Opis wydania 0.3.1](https://github.com/direk/tauronizer/releases/tag/v0.3.1)
 · [Historia zmian](tauronizer/CHANGELOG.md)
 
 ## Funkcje
@@ -67,7 +69,7 @@ Kroki ręczne:
 Dodatek buduje obraz lokalnie na urządzeniu (nie wymaga gotowego obrazu w
 rejestrze). Obsługiwane architektury: `amd64` i `aarch64`.
 
-### Aktualizacja do 0.3.0
+### Aktualizacja do 0.3.1
 
 1. W sklepie dodatków odśwież repozytorium i otwórz **Tauronizer**.
 2. Wykonaj kopię zapasową dodatku, a następnie wybierz **Aktualizuj**.

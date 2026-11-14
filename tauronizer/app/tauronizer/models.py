@@ -21,6 +21,7 @@ class Zone(BaseModel):
     energy_net: float = Field(ge=0, le=10)
     distribution_net: float = Field(ge=0, le=10)
     exclude_holidays: bool = False
+    is_default: bool = False
     months: list[int] | None = Field(default=None, min_length=1, max_length=12)
 
     @field_validator("days")

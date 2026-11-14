@@ -49,6 +49,7 @@ class CompiledZone:
     distribution_net: float
     exclude_holidays: bool
     months: frozenset[int] | None = None
+    is_default: bool = False
 
     def matches(
         self, month: int, weekday: int, minutes: int, is_holiday: bool
@@ -171,6 +172,15 @@ def compile_zones(config: Mapping[str, Any]) -> list[CompiledZone]:
                 f"Strefa „{name}”: cena powyżej 10 zł/kWh wygląda na pomyłkę."
             )
 
+        is_default = bool(raw.get("is_default")) or (
+            days == set(range(7)) and months is None
+            and intervals == ((0, 1440),) and not raw.get("exclude_holidays", False)
+        )
+        if is_default and any(zone.is_default for zone in zones):
+            raise TariffValidationError("Taryfa może mieć tylko jedną strefę domyślną (całodobową przez cały rok).")
+        if is_default:
+            days, intervals, months = set(range(7)), ((0, 1440),), None
+
         zones.append(
             CompiledZone(
                 id=zone_id,
@@ -179,11 +189,13 @@ def compile_zones(config: Mapping[str, Any]) -> list[CompiledZone]:
                 intervals=intervals,
                 energy_net=energy,
                 distribution_net=distribution,
-                exclude_holidays=bool(raw.get("exclude_holidays", False)),
+                exclude_holidays=False if is_default else bool(raw.get("exclude_holidays", False)),
+                is_default=is_default,
                 months=months,
             )
         )
 
+    zones.sort(key=lambda zone: zone.is_default)
     _validate_coverage(zones)
     return zones
 
@@ -386,7 +398,7 @@ PRESETS: list[dict[str, Any]] = [
                 ),
                 _zone(
                     "pozaszczyt",
-                    "Pozaszczyt",
+                    "Pozostałe godziny — strefa domyślna",
                     days=_ALL_DAYS,
                     intervals=["00:00-24:00"],
                     energy=0.4130,
@@ -415,7 +427,7 @@ PRESETS: list[dict[str, Any]] = [
                 ),
                 _zone(
                     "pozaszczyt",
-                    "Pozaszczyt",
+                    "Pozostałe godziny — strefa domyślna",
                     days=_ALL_DAYS,
                     intervals=["00:00-24:00"],
                     energy=0.4130,
@@ -465,7 +477,7 @@ PRESETS: list[dict[str, Any]] = [
                 ),
                 _zone(
                     "pozaszczyt",
-                    "Pozaszczyt",
+                    "Pozostałe godziny — strefa domyślna",
                     days=_ALL_DAYS,
                     intervals=["00:00-24:00"],
                     energy=0.4210,
@@ -476,7 +488,7 @@ PRESETS: list[dict[str, Any]] = [
     },
 ]
 
-PRESET_VERSION = 3
+PRESET_VERSION = 4
 
 
 def preset_by_id(preset_id: str) -> dict[str, Any] | None:

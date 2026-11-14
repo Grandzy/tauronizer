@@ -251,3 +251,32 @@ def test_verified_2026_net_prices():
         assert [fee["net_per_kwh"] for fee in config["variable_fees"]] == [0.0332, 0.0073, 0.003]
         assert config["excise_net_per_kwh"] == 0.005
         assert config["capacity_fee"]["net_monthly_rates"] == [4.29, 10.31, 17.18, 24.05]
+
+
+def test_g13_default_cannot_shadow_peaks_even_when_moved_first() -> None:
+    import copy
+    config = copy.deepcopy(preset('g13')['config'])
+    config['zones'].insert(0, config['zones'].pop())
+    zones = compile_zones(config)
+    assert zones[-1].is_default
+    assert zones[-1].id == 'pozaszczyt'
+    holidays = polish_holidays(2026)
+    assert zone_for(local(2026, 1, 5, 8), zones, holidays).id == 'szczyt_przedpoludniowy'
+    assert zone_for(local(2026, 7, 6, 20), zones, holidays).id == 'szczyt_popoudniowy_lato'
+    assert zone_for(local(2026, 1, 6, 8), zones, holidays).id == 'pozaszczyt'
+
+
+def test_multiple_default_zones_are_rejected() -> None:
+    import copy
+    config = copy.deepcopy(preset('g13')['config'])
+    config['zones'][0]['is_default'] = True
+    with pytest.raises(TariffValidationError, match='tylko jedną'):
+        compile_zones(config)
+
+
+def test_explicit_default_covers_all_days_months_and_holidays() -> None:
+    config = {'zones': [{'id': 'base', 'name': 'Base', 'is_default': True,
+                         'days': [0], 'months': [1], 'intervals': ['07:00-13:00'],
+                         'exclude_holidays': True, 'energy_net': 0.5, 'distribution_net': 0.1}]}
+    zones = compile_zones(config)
+    assert zone_for(local(2026, 12, 26, 23), zones, polish_holidays(2026)).id == 'base'

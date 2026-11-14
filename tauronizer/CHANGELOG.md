@@ -1,5 +1,14 @@
 # Historia zmian
 
+## 0.3.1 — 14.11.2026
+
+- Dodano oznaczenie „Pozostałe godziny — strefa domyślna” i checkbox w edytorze.
+- Strefa domyślna jest zawsze sprawdzana ostatnia, także w istniejących taryfach.
+- Zablokowano zmianę jej harmonogramu i odrzucono konfiguracje z dwiema strefami domyślnymi.
+- Nowe strefy trafiają przed strefę domyślną; zapis API normalizuje kolejność.
+- Dodano testy kolejności, walidacji i zapisu przez API.
+- Uzupełniono główne README o screenshot analizy na danych demonstracyjnych i disclaimer AI.
+
 ## 0.3.0 — 14.11.2026
 
 - Zaktualizowano presety G11, G12, G12w i G13 według taryf TAURON Sprzedaż

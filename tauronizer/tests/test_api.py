@@ -279,3 +279,20 @@ def test_legacy_config_without_capacity_is_still_accepted(client):
     response = client.post('/api/tariffs', json={'name': 'Starsza taryfa', 'config': base['config']})
     assert response.status_code == 201
     assert response.json()['config']['capacity_fee'] is None
+
+
+def test_default_zone_is_saved_last_and_cannot_be_duplicated(client: TestClient) -> None:
+    import copy
+    from tauronizer.tariffs import PRESETS
+    config = copy.deepcopy(next(p for p in PRESETS if p['id'] == 'g13')['config'])
+    config['zones'].insert(0, config['zones'].pop())
+    response = client.post('/api/tariffs', json={'name': 'Default safety', 'config': config})
+    assert response.status_code == 201, response.text
+    saved = response.json()
+    assert saved['config']['zones'][-1]['id'] == 'pozaszczyt'
+    assert saved['config']['zones'][-1]['is_default'] is True
+    assert client.get('/api/tariffs').status_code == 200
+    config['zones'][1]['is_default'] = True
+    rejected = client.post('/api/tariffs', json={'name': 'Two defaults', 'config': config})
+    assert rejected.status_code == 400
+    assert 'tylko jedną' in rejected.json()['detail']

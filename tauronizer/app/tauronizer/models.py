@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import re
 from datetime import date
-from typing import Any
+from typing import Annotated, Any
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
@@ -70,12 +70,24 @@ class VariableFee(BaseModel):
     net_per_kwh: float = Field(ge=0, le=10)
 
 
+class CapacityFee(BaseModel):
+    """Monthly household fee; bounds are <500, <=1200, <=2800, >2800 kWh."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    annual_kwh: float | None = Field(default=None, ge=0, allow_inf_nan=False)
+    net_monthly_rates: list[Annotated[float, Field(ge=0, le=10_000)]] = Field(
+        default_factory=lambda: [4.29, 10.31, 17.18, 24.05], min_length=4, max_length=4
+    )
+
+
 class TariffConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     zones: list[Zone] = Field(min_length=1, max_length=16)
     fixed_fees: list[FixedFee] = Field(default_factory=list, max_length=20)
     variable_fees: list[VariableFee] = Field(default_factory=list, max_length=20)
+    capacity_fee: CapacityFee | None = None
     excise_net_per_kwh: float = Field(default=0.005, ge=0, le=1)
     vat_percent: float = Field(default=23.0, ge=0, le=100)
 

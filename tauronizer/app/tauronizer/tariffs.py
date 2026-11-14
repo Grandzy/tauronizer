@@ -237,7 +237,7 @@ def polish_holidays(year: int) -> set[date]:
     """Statutory Polish holidays for a given year."""
 
     easter = easter_sunday(year)
-    return {
+    return ({date(year, 12, 24)} if year >= 2025 else set()) | {
         date(year, 1, 1),  # Nowy Rok
         date(year, 1, 6),  # Trzech Króli
         date(year, 5, 1),  # Święto Pracy
@@ -284,21 +284,26 @@ def zone_for(
 # Built-in Tauron presets
 # ---------------------------------------------------------------------------
 
+# Verified 2026-11-14 against URE tariff 265/2025 and TAURON distribution tariff.
+# Full sources and assumptions: README.md, section "Stawki Tauron 2026".
 PRESET_NOTE = (
-    "Wartości przykładowe, netto, na potrzeby porównania. "
-    "Przed decyzją zweryfikuj stawki z aktualnym cennikiem Tauron."
+    "TAURON Sprzedaż 2026 (bez obszaru gliwickiego i ofert rynkowych), "
+    "dystrybucja według stawek od 01.02.2026. Wszystkie stawki netto; "
+    "energia bez akcyzy. Domyślnie 3 fazy i abonament w cyklu 1-miesięcznym. "
+    "Opłata mocowa: próg według wpisanego poboru lub szacunku rocznego z analizy. "
+    "Porównanie stosuje skonfigurowany cennik do całego zakresu, nie odtwarza faktur historycznych."
 )
 
 _FIXED_FEES = [
-    {"name": "Opłata stała sieciowa", "net_monthly": 12.00},
-    {"name": "Opłata abonamentowa", "net_monthly": 4.50},
+    {"name": "Opłata stała sieciowa (3 fazy)", "net_monthly": 10.86},
+    {"name": "Opłata abonamentowa (cykl 1-miesięczny)", "net_monthly": 4.56},
+    {"name": "Opłata handlowa", "net_monthly": 0.00},
 ]
 
 _VARIABLE_FEES = [
-    {"name": "Opłata przejściowa", "net_per_kwh": 0.0009},
-    {"name": "Opłata OZE", "net_per_kwh": 0.0065},
-    {"name": "Opłata kogeneracyjna", "net_per_kwh": 0.0013},
-    {"name": "Opłata mocowa", "net_per_kwh": 0.0249},
+    {"name": "Opłata jakościowa", "net_per_kwh": 0.0332},
+    {"name": "Opłata OZE", "net_per_kwh": 0.0073},
+    {"name": "Opłata kogeneracyjna", "net_per_kwh": 0.0030},
 ]
 
 _ALL_DAYS = [0, 1, 2, 3, 4, 5, 6]
@@ -335,6 +340,7 @@ def _config(zones: Sequence[dict[str, Any]]) -> dict[str, Any]:
         "zones": list(zones),
         "fixed_fees": copy.deepcopy(_FIXED_FEES),
         "variable_fees": copy.deepcopy(_VARIABLE_FEES),
+        "capacity_fee": {"annual_kwh": None, "net_monthly_rates": [4.29, 10.31, 17.18, 24.05]},
         "excise_net_per_kwh": 0.005,
         "vat_percent": 23.0,
     }
@@ -355,8 +361,8 @@ PRESETS: list[dict[str, Any]] = [
                     "Cała doba",
                     days=_ALL_DAYS,
                     intervals=["00:00-24:00"],
-                    energy=0.46,
-                    distribution=0.30,
+                    energy=0.4970,
+                    distribution=0.2464,
                 )
             ]
         ),
@@ -365,26 +371,26 @@ PRESETS: list[dict[str, Any]] = [
         "id": "g12",
         "name": "Tauron G12",
         "description": (
-            "Dwie strefy: szczyt (dni robocze 06–13 i 15–22) oraz pozaszczyt. "
-            "Weekendy są w całości poza szczytem."
+            "Dwie strefy: dzienna 06–13 i 15–22 oraz nocna 13–15 i 22–06. "
+            "Te same godziny we wszystkie dni, także weekendy i święta."
         ),
         "config": _config(
             [
                 _zone(
                     "szczyt",
                     "Szczyt",
-                    days=_WORKDAYS,
+                    days=_ALL_DAYS,
                     intervals=["06:00-13:00", "15:00-22:00"],
-                    energy=0.53,
-                    distribution=0.34,
+                    energy=0.5430,
+                    distribution=0.2841,
                 ),
                 _zone(
                     "pozaszczyt",
                     "Pozaszczyt",
                     days=_ALL_DAYS,
                     intervals=["00:00-24:00"],
-                    energy=0.39,
-                    distribution=0.22,
+                    energy=0.4130,
+                    distribution=0.0558,
                 ),
             ]
         ),
@@ -403,8 +409,8 @@ PRESETS: list[dict[str, Any]] = [
                     "Szczyt",
                     days=_WORKDAYS,
                     intervals=["06:00-13:00", "15:00-22:00"],
-                    energy=0.53,
-                    distribution=0.36,
+                    energy=0.6220,
+                    distribution=0.3298,
                     exclude_holidays=True,
                 ),
                 _zone(
@@ -412,8 +418,8 @@ PRESETS: list[dict[str, Any]] = [
                     "Pozaszczyt",
                     days=_ALL_DAYS,
                     intervals=["00:00-24:00"],
-                    energy=0.38,
-                    distribution=0.21,
+                    energy=0.4130,
+                    distribution=0.0512,
                 ),
             ]
         ),
@@ -433,8 +439,8 @@ PRESETS: list[dict[str, Any]] = [
                     "Szczyt przedpołudniowy",
                     days=_WORKDAYS,
                     intervals=["07:00-13:00"],
-                    energy=0.54,
-                    distribution=0.35,
+                    energy=0.4668,
+                    distribution=0.2203,
                     exclude_holidays=True,
                 ),
                 _zone(
@@ -442,8 +448,8 @@ PRESETS: list[dict[str, Any]] = [
                     "Szczyt popołudniowy (zima)",
                     days=_WORKDAYS,
                     intervals=["16:00-21:00"],
-                    energy=0.54,
-                    distribution=0.35,
+                    energy=0.7780,
+                    distribution=0.3898,
                     exclude_holidays=True,
                     months=[10, 11, 12, 1, 2, 3],
                 ),
@@ -452,8 +458,8 @@ PRESETS: list[dict[str, Any]] = [
                     "Szczyt popołudniowy (lato)",
                     days=_WORKDAYS,
                     intervals=["19:00-22:00"],
-                    energy=0.54,
-                    distribution=0.35,
+                    energy=0.7780,
+                    distribution=0.3898,
                     exclude_holidays=True,
                     months=[4, 5, 6, 7, 8, 9],
                 ),
@@ -462,15 +468,15 @@ PRESETS: list[dict[str, Any]] = [
                     "Pozaszczyt",
                     days=_ALL_DAYS,
                     intervals=["00:00-24:00"],
-                    energy=0.36,
-                    distribution=0.20,
+                    energy=0.4210,
+                    distribution=0.0392,
                 ),
             ]
         ),
     },
 ]
 
-PRESET_VERSION = 2
+PRESET_VERSION = 3
 
 
 def preset_by_id(preset_id: str) -> dict[str, Any] | None:

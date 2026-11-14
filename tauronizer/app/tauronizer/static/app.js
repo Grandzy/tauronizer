@@ -523,21 +523,22 @@ function renderAnalysis(result) {
   }).join('');
 
   const breakdownLabels = [
-    ['Energia czynna', 'energy_pln'],
-    ['Dystrybucja', 'distribution_pln'],
-    ['Opłaty zmienne', 'variable_fees_pln'],
+    ['Energia czynna netto (bez akcyzy)', 'energy_pln'],
+    ['Dystrybucja netto', 'distribution_pln'],
+    ['Opłaty zmienne netto', 'variable_fees_pln'],
     ['Akcyza', 'excise_pln'],
-    ['Opłaty stałe', 'fixed_pln'],
+    ['Opłaty stałe netto', 'fixed_pln'],
+    ['Opłata mocowa netto', 'capacity_fee_pln'],
     ['Netto', 'net_pln'],
     ['VAT', 'vat_pln'],
-    ['Razem', 'total_pln'],
+    ['Razem brutto', 'total_pln'],
   ];
 
   const details = valid.map((tariff) => {
     const breakdown = tariff.breakdown || {};
     const breakdownRows = breakdownLabels.map(([label, key]) => {
       const isTotal = key === 'total_pln';
-      return `<div class="${isTotal ? 'total' : ''}"><dt>${label}</dt><dd>${formatPLN(breakdown[key])}</dd></div>`;
+      return `<div class="${isTotal ? 'total' : ''}"><dt>${label}</dt><dd>${formatPLN(breakdown[key] ?? 0)}</dd></div>`;
     }).join('');
 
     const zoneRows = (tariff.zones || []).map((zone) => `
@@ -563,7 +564,7 @@ function renderAnalysis(result) {
               <h4>Zużycie według stref</h4>
               <div class="table-wrap">
                 <table class="data-table">
-                  <thead><tr><th>Strefa</th><th>kWh</th><th>Udział</th><th>Energia</th><th>Dystrybucja</th></tr></thead>
+                  <thead><tr><th>Strefa</th><th>kWh</th><th>Udział</th><th>Energia netto</th><th>Dystrybucja netto</th></tr></thead>
                   <tbody>${zoneRows || '<tr><td colspan="5">Brak zużycia w okresie.</td></tr>'}</tbody>
                 </table>
               </div>
@@ -571,6 +572,9 @@ function renderAnalysis(result) {
             <div>
               <h4>Składniki rachunku</h4>
               <dl class="breakdown">${breakdownRows}</dl>
+              ${tariff.capacity_fee ? `<p class="muted small">Opłata mocowa: ${formatPLN(tariff.capacity_fee.net_monthly)}/mies. netto.
+                Podstawa: ${formatNumber(tariff.capacity_fee.annual_kwh, 1)} kWh
+                (${tariff.capacity_fee.estimated ? 'szacunek roczny z wybranego okresu' : 'pobór wpisany w konfiguracji'}).</p>` : ''}
               <p class="muted small" style="margin-top:10px">Szacunek w skali roku: <strong>${formatPLN(tariff.annual_pln)}</strong></p>
             </div>
           </div>
@@ -759,10 +763,11 @@ function renderTariffGrid() {
           ${tariff.is_preset ? '<span class="badge">preset</span>' : ''}
         </div>
         <p class="muted">${escapeHtml(tariff.description || 'Taryfa własna.')}</p>
+        <p class="muted small">Strefy: energia + sieć, netto zł/kWh, bez akcyzy i opłat dodatkowych.</p>
         <div class="zone-pills">${pills || '<span class="muted small">Brak stref</span>'}</div>
         <div class="tariff-meta">
-          <span>${range ? `z VAT: <b>${formatNumber(range.min, 2)}${range.max - range.min > 0.001 ? `–${formatNumber(range.max, 2)}` : ''} zł/kWh</b>` : 'brak cen'}</span>
-          <span>stałe: <b>${formatPLN(fixed)}</b>/mies. netto</span>
+          <span>${range ? `zmienne brutto: <b>${formatNumber(range.min, 2)}${range.max - range.min > 0.001 ? `–${formatNumber(range.max, 2)}` : ''} zł/kWh</b>` : 'brak cen'}</span>
+          <span>stałe: <b>${formatPLN(fixed)}</b>/mies. netto${config.capacity_fee ? " + mocowa według progu zużycia" : ""}</span>
         </div>
         <div class="tariff-actions">
           <button type="button" data-action="edit" data-id="${escapeHtml(tariff.id)}">Edytuj</button>
@@ -875,7 +880,7 @@ function zoneEditorHtml(zone = {}) {
           <span class="field-hint">Zaznacz, jeśli strefa obowiązuje tylko w części roku. Brak zaznaczeń = cały rok.</span>
         </label>
         <label class="field">
-          <span class="field-label">Energia netto (zł/kWh)</span>
+          <span class="field-label">Energia netto bez akcyzy (zł/kWh)</span>
           <input class="input zone-energy" type="number" min="0" max="10" step="0.0001"
                  value="${Number(zone.energy_net ?? 0)}">
         </label>
@@ -938,7 +943,7 @@ function openTariffEditor(tariff) {
           <h2 id="modal-title">${tariff ? 'Edytuj taryfę' : 'Nowa taryfa'}</h2>
           <p>${tariff && tariff.is_preset
             ? 'Edytujesz wbudowany preset. W każdej chwili możesz przywrócić domyślne wartości.'
-            : 'Stawki podawaj netto. VAT i akcyza są doliczane w analizie.'}</p>
+            : 'Stawki podawaj netto, energię bez akcyzy. Akcyza jest dodawana osobno, VAT na końcu.'}</p>
         </div>
         <button class="icon-button" type="button" data-close aria-label="Zamknij">✕</button>
       </div>
@@ -975,7 +980,7 @@ function openTariffEditor(tariff) {
                   <button type="button" class="link-button" data-add-fee="fixed">+ Dodaj</button>
                 </div>
                 <div id="fixed-fees">${fixedFees.map((fee) => feeRowHtml(fee, 'fixed')).join('')}</div>
-                <p class="field-hint">Miesięczne, netto. W analizie rozliczane proporcjonalnie do okresu.</p>
+                <p class="field-hint">Miesięczne, netto; proporcjonalnie do okresu. Sieciowa: 1 faza 7,38 zł; 3 fazy 10,86 zł. Abonament dla cyklu 1/2/6/12 mies.: 4,56/2,28/0,76/0,38 zł miesięcznie. Opłatę handlową wpisz z umowy.</p>
               </div>
               <div>
                 <div class="group-head">
@@ -983,8 +988,28 @@ function openTariffEditor(tariff) {
                   <button type="button" class="link-button" data-add-fee="variable">+ Dodaj</button>
                 </div>
                 <div id="variable-fees">${variableFees.map((fee) => feeRowHtml(fee, 'variable')).join('')}</div>
-                <p class="field-hint">Za każdą kWh, netto (OZE, przejściowa, mocowa itd.).</p>
+                <p class="field-hint">Za każdą kWh, netto: jakościowa, OZE, kogeneracyjna. Opłatę mocową ustaw poniżej.</p>
               </div>
+            </div>
+
+            <div>
+              <h3>Opłata mocowa — gospodarstwo domowe</h3>
+              <label class="field"><span><input id="capacity-enabled" type="checkbox" ${config.capacity_fee ? 'checked' : ''}> Naliczaj miesięcznie według progu zużycia</span></label>
+              <label class="field">
+                <span class="field-label">Pobór energii do ustalenia progu (kWh)</span>
+                <input class="input" id="capacity-annual" type="number" min="0" step="any"
+                  value="${config.capacity_fee?.annual_kwh ?? ''}" placeholder="Puste: szacunek roczny z analizy">
+              </label>
+              <p class="field-hint">Wpisz pobór z sieci z ostatnich 12 miesięcy według odczytu Taurona. Dla nowego odbiorcy wpisz pobór do ostatniego odczytu (0 przed pierwszym). Puste pole oznacza szacunek: zużycie z analizy × 365,25 / liczba dni. Krótki lub niepełny okres może wskazać inny próg niż faktura.</p>
+              <div class="form-row">
+                ${['poniżej 500 kWh', '500–1200 kWh', 'powyżej 1200 do 2800 kWh', 'powyżej 2800 kWh'].map((label, index) => `
+                  <label class="field">
+                    <span class="field-label">${label} (zł/mies. netto)</span>
+                    <input class="input capacity-rate" type="number" min="0" max="10000" step="0.01"
+                      value="${config.capacity_fee?.net_monthly_rates?.[index] ?? [4.29, 10.31, 17.18, 24.05][index]}">
+                  </label>`).join('')}
+              </div>
+              <p class="field-hint">Usuń opłatę mocową z pozostałych opłat, jeśli była tam wpisana — aby nie naliczać jej dwa razy.</p>
             </div>
 
             <div class="form-row">
@@ -1078,6 +1103,16 @@ async function saveTariffForm(form) {
     if (!Number.isFinite(excise) || excise < 0 || excise > 1) throw new Error('Akcyza musi być w zakresie 0–1 zł/kWh.');
     if (!Number.isFinite(vat) || vat < 0 || vat > 100) throw new Error('VAT musi być w zakresie 0–100%.');
 
+    let capacityFee = null;
+    if ($('#capacity-enabled').checked) {
+      const annualText = $('#capacity-annual').value.trim();
+      const annualKwh = annualText === '' ? null : Number(annualText);
+      const rates = $$('.capacity-rate', form).map((input) => Number(input.value));
+      if (annualKwh !== null && (!Number.isFinite(annualKwh) || annualKwh < 0)) throw new Error('Pobór energii musi być nieujemną liczbą.');
+      if (rates.some((rate) => !Number.isFinite(rate) || rate < 0 || rate > 10000)) throw new Error('Stawki opłaty mocowej muszą być w zakresie 0–10000 zł.');
+      capacityFee = { annual_kwh: annualKwh, net_monthly_rates: rates };
+    }
+
     const payload = {
       name,
       description,
@@ -1085,6 +1120,7 @@ async function saveTariffForm(form) {
         zones,
         fixed_fees: readFees(form, 'fixed-fees', 'net_monthly'),
         variable_fees: readFees(form, 'variable-fees', 'net_per_kwh'),
+        capacity_fee: capacityFee,
         excise_net_per_kwh: excise,
         vat_percent: vat,
       },

@@ -30,6 +30,26 @@ def _round(value: float, digits: int = 2) -> float:
     return round(float(value) + 1e-9, digits)
 
 
+def capacity_fee_details(
+    config: dict[str, Any], total_kwh: float, days: int
+) -> dict[str, Any] | None:
+    fee = config.get("capacity_fee")
+    if fee is None:
+        return None  # Older/custom tariffs retain their explicit fee configuration.
+    annual_kwh = fee.get("annual_kwh")
+    estimated = annual_kwh is None
+    if estimated:
+        annual_kwh = total_kwh * DAYS_PER_YEAR / days
+    annual_kwh = float(annual_kwh)
+    tier = 0 if annual_kwh < 500 else 1 if annual_kwh <= 1200 else 2 if annual_kwh <= 2800 else 3
+    return {
+        "annual_kwh": _round(annual_kwh, 3),
+        "estimated": estimated,
+        "tier": tier,
+        "net_monthly": float(fee["net_monthly_rates"][tier]),
+    }
+
+
 def _tariff_meta(tariff: dict[str, Any]) -> dict[str, Any]:
     return {
         "tariff_id": tariff["id"],
@@ -82,17 +102,22 @@ def _cost_for_tariff(
     fixed_monthly = sum(float(fee.get("net_monthly", 0) or 0) for fee in fixed_fees)
     months = days * 12 / DAYS_PER_YEAR
     fixed_pln = fixed_monthly * months
+    capacity = capacity_fee_details(config, total_kwh, days)
+    capacity_monthly = capacity["net_monthly"] if capacity else 0.0
+    capacity_pln = capacity_monthly * months
 
-    net_pln = energy_pln + distribution_pln + variable_fees_pln + excise_pln + fixed_pln
+    net_pln = _round(
+        energy_pln + distribution_pln + variable_fees_pln + excise_pln + fixed_pln + capacity_pln
+    )
     vat_rate = float(config.get("vat_percent", 23) or 0) / 100
-    vat_pln = net_pln * vat_rate
+    vat_pln = _round(net_pln * vat_rate)
     total_pln = net_pln + vat_pln
 
     annual_factor = DAYS_PER_YEAR / days if days else 0
     annual_variable = (
         energy_pln + distribution_pln + variable_fees_pln + excise_pln
     ) * annual_factor
-    annual_net = annual_variable + fixed_monthly * 12
+    annual_net = annual_variable + (fixed_monthly + capacity_monthly) * 12
     annual_pln = annual_net * (1 + vat_rate)
 
     zone_rows = []
@@ -119,12 +144,14 @@ def _cost_for_tariff(
         "per_kwh_pln": _round(total_pln / total_kwh, 4) if total_kwh else 0,
         "extra_cost_pln": None,
         "rank": None,
+        "capacity_fee": capacity,
         "breakdown": {
             "energy_pln": _round(energy_pln),
             "distribution_pln": _round(distribution_pln),
             "variable_fees_pln": _round(variable_fees_pln),
             "excise_pln": _round(excise_pln),
             "fixed_pln": _round(fixed_pln),
+            "capacity_fee_pln": _round(capacity_pln),
             "net_pln": _round(net_pln),
             "vat_pln": _round(vat_pln),
             "total_pln": _round(total_pln),
@@ -221,7 +248,12 @@ def analyze(
             "Zużycie pochodzi ze statystyk długoterminowych Home Assistant "
             "(okresy godzinowe). Każdą godzinę przypisano do strefy na podstawie "
             "czasu lokalnego Europe/Warsaw, z uwzględnieniem weekendów i świąt. "
-            f"Opłaty stałe rozliczono proporcjonalnie ({days} dni)."
+            f"Opłaty miesięczne rozliczono proporcjonalnie ({days} dni, 365,25 dni/rok). "
+            "Opłata mocowa jest miesięcznym ryczałtem według progu poboru podanego "
+            "w taryfie; bez podanej wartości próg oszacowano z zużycia × 365,25/liczba dni. "
+            "To szacunek porównawczy, nie kwalifikacja według odczytów Taurona. "
+            "Wszystkie składniki i akcyzę zsumowano netto; VAT doliczono raz do sumy. "
+            "Skonfigurowane stawki obowiązują w całej symulacji, niezależnie od dat zużycia."
         ),
     }
 

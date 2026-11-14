@@ -162,11 +162,9 @@ def _store_preset_hashes(connection: sqlite3.Connection) -> None:
         ).fetchone()
         if row is None:
             continue
-        try:
-            config = json.loads(row["config"])
-        except (TypeError, ValueError):
-            config = None
-        hashes[preset["id"]] = _config_hash(config)
+        # Record the shipped definition, never a customised stored tariff.
+        # Otherwise a second upgrade would mistake user edits for a preset.
+        hashes[preset["id"]] = _config_hash(preset["config"])
     _set_setting(connection, "preset_hashes", json.dumps(hashes, sort_keys=True))
 
 

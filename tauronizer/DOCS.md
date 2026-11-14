@@ -30,8 +30,10 @@ niedawno.
 
 ## Taryfy
 
-- **G11, G12, G12w, G13** to presety przykładowe. Stawki netto są
-  orientacyjne — wpisz wartości z aktualnego cennika Tauron i swojej umowy.
+- **G11, G12, G12w, G13**: ceny TAURON Sprzedaż 2026 (bez obszaru gliwickiego
+  i ofert rynkowych), dystrybucja ze stawką jakościową od 01.02.2026.
+  Ceny netto, energia bez akcyzy. Domyślnie 3 fazy i cykl 1-miesięczny;
+  wartości i źródła opisuje [README](https://github.com/direk/tauronizer#stawki-tauron-2026).
 - **Edytuj** zmienia wybraną taryfę lokalnie. Zmiany presetów można cofnąć
   przyciskiem **Przywróć presety**.
 - **Duplikuj** tworzy własną kopię, której aktualizacje dodatku nie zmieniają.
@@ -55,18 +57,40 @@ pokrywa całego roku, wszystkich dni i godzin (także w święta).
 Przykład sezonowy (G13, szczyt popołudniowy): dni robocze, godziny
 `16:00-21:00`, miesiące X–III; druga strefa `19:00-22:00` dla IV–IX.
 
+### Opłata mocowa i opłaty miesięczne
+
+Opłata mocowa ma osobną sekcję w edytorze taryfy. Jest miesięcznym ryczałtem
+netto: poniżej 500 kWh — 4,29 zł; 500–1200 — 10,31 zł;
+powyżej 1200 do 2800 — 17,18 zł; powyżej 2800 — 24,05 zł.
+Wpisz pobór z sieci, według którego Tauron kwalifikuje odbiorcę na ostatnim
+odczycie (zwykle ostatnie 12 miesięcy; dla nowego odbiorcy dotychczasowy pobór,
+przed pierwszym odczytem 0). Puste pole szacuje roczny pobór z okresu analizy.
+Nie wpisuj tej opłaty drugi raz w opłatach stałych lub zmiennych.
+Wynik pokazuje podstawę progu i stawkę, również gdy jest to szacunek.
+
+W opłatach stałych zmień sieciową na 7,38 zł dla 1 fazy lub 10,86 zł dla 3 faz.
+Abonament miesięczny dla cyklu 1/2/6/12 miesięcy: 4,56/2,28/0,76/0,38 zł netto.
+Opłatę handlową wpisz z umowy (w taryfie sprzedawcy 0 zł).
+
+Aktualizacja zachowuje edytowane presety i własne taryfy; ich stawki popraw
+ręcznie lub użyj „Przywróć presety”. Zapisane wyniki nie są przeliczane.
+
 ## Metodologia
 
 - Czas lokalny `Europe/Warsaw`, z uwzględnieniem zmiany czasu, weekendów i
   świąt (w tym ruchomych: Wielkanoc, Zielone Świątki, Boże Ciało).
 - Opłaty stałe miesięczne są rozliczane proporcjonalnie do liczby dni.
 - Szacunek roczny skaluje koszty zmienne do 365,25 dnia i dodaje 12 opłat
-  stałych.
+  stałych i mocowych.
 - VAT jest doliczany do sumy netto; akcyza i opłaty zmienne od każdej kWh.
 - Ujemne przyrosty (resety licznika) są pomijane z ostrzeżeniem.
 
 To porównanie przy niezmienionym profilu zużycia. Nie jest to prognoza cen
-ani oferta handlowa.
+ani oferta handlowa. Jeden cennik i jeden próg mocowej obowiązują w całym
+zakresie; dodatek nie odtwarza historycznych zmian cen ani kwalifikacji Taurona.
+Stawki ze stycznia 2026 (jakościowa 0,0331) wymagają własnej taryfy.
+Pełne miesiące i abonament na fakturze mogą być rozliczane inaczej niż
+proporcjonalny szacunek dodatku.
 
 ## Dane i prywatność
 

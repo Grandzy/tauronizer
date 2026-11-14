@@ -57,7 +57,8 @@ def test_polish_holidays() -> None:
     assert date(2026, 5, 24) in holidays  # Zielone Świątki
     assert date(2026, 6, 4) in holidays  # Boże Ciało
     assert date(2026, 12, 26) in holidays
-    assert date(2026, 12, 24) not in holidays
+    assert date(2026, 12, 24) in holidays
+    assert date(2024, 12, 24) not in polish_holidays(2024)
 
 
 def test_holidays_between_spans_years() -> None:
@@ -222,3 +223,31 @@ def test_zone_prices_are_non_negative() -> None:
         for zone in compile_zones(item["config"]):
             assert zone.energy_net >= 0
             assert zone.distribution_net >= 0
+
+
+@pytest.mark.parametrize("day", [10, 11])
+def test_g12_weekend_daytime_is_day_zone(day):
+    zones = compile_zones(preset("g12")["config"])
+    assert zone_for(local(2026, 1, day, 10), zones, set()).id == "szczyt"
+
+
+@pytest.mark.parametrize("preset_id", ["g12w", "g13"])
+def test_christmas_eve_is_offpeak(preset_id):
+    zones = compile_zones(preset(preset_id)["config"])
+    holidays = holidays_between(date(2026, 12, 24), date(2026, 12, 24))
+    assert zone_for(local(2026, 12, 24, 10), zones, holidays).id == "pozaszczyt"
+
+
+def test_verified_2026_net_prices():
+    expected = {
+        "g11": [(0.497, 0.2464)],
+        "g12": [(0.543, 0.2841), (0.413, 0.0558)],
+        "g12w": [(0.622, 0.3298), (0.413, 0.0512)],
+        "g13": [(0.4668, 0.2203), (0.778, 0.3898), (0.778, 0.3898), (0.421, 0.0392)],
+    }
+    for item in PRESETS:
+        config = item["config"]
+        assert [(z["energy_net"], z["distribution_net"]) for z in config["zones"]] == expected[item["id"]]
+        assert [fee["net_per_kwh"] for fee in config["variable_fees"]] == [0.0332, 0.0073, 0.003]
+        assert config["excise_net_per_kwh"] == 0.005
+        assert config["capacity_fee"]["net_monthly_rates"] == [4.29, 10.31, 17.18, 24.05]

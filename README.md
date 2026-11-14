@@ -10,9 +10,26 @@ pełny rachunek: energię czynną, dystrybucję, opłaty stałe i zmienne, akcyz
 oraz VAT. Na tej podstawie pokazuje, która taryfa jest najtańsza dla Twojego
 profilu zużycia — w wybranym okresie i w przeliczeniu na rok.
 
-> **Ważne:** wbudowane stawki są wartościami przykładowymi (netto) i służą
-> porównaniu taryf. Przed zmianą taryfy zweryfikuj ceny z aktualnym cennikiem
-> Tauron i swoją umową. Wszystkie stawki możesz edytować w aplikacji.
+> **Stawki 2026:** presety dotyczą TAURON Sprzedaż (bez obszaru gliwickiego
+> i ofert rynkowych) oraz TAURON Dystrybucja, ze stawką jakościową od 1 lutego.
+> Wszystkie ceny konfiguracyjne są netto, energia bez akcyzy; VAT doliczamy
+> do końcowej sumy netto. Sprawdź rodzaj umowy, liczbę faz i cykl rozliczeń.
+
+## Nowości w 0.3.0
+
+- Aktualne ceny netto Taurona na 2026 rok dla G11, G12, G12w i G13.
+- Opłata mocowa jako miesięczny ryczałt z czterema progami zużycia;
+  konfiguracja poboru kwalifikującego i stawek, z możliwością szacowania progu.
+- Uzupełniona opłata jakościowa, aktualne OZE i kogeneracyjna oraz usunięta
+  opłata przejściowa.
+- Poprawne strefy weekendowe G12, ceny stref G13 i obsługa Wigilii od 2025 r.
+- Czytelne rozbicie rachunku: składniki netto, osobna akcyza, VAT doliczany
+  na końcu i suma brutto.
+- Zachowanie własnych taryf i edytowanych presetów także przy kolejnych
+  aktualizacjach.
+
+[Opis wydania 0.3.0](https://github.com/direk/tauronizer/releases/tag/v0.3.0)
+· [Historia zmian](tauronizer/CHANGELOG.md)
 
 ## Funkcje
 
@@ -50,6 +67,20 @@ Kroki ręczne:
 Dodatek buduje obraz lokalnie na urządzeniu (nie wymaga gotowego obrazu w
 rejestrze). Obsługiwane architektury: `amd64` i `aarch64`.
 
+### Aktualizacja do 0.3.0
+
+1. W sklepie dodatków odśwież repozytorium i otwórz **Tauronizer**.
+2. Wykonaj kopię zapasową dodatku, a następnie wybierz **Aktualizuj**.
+3. Po aktualizacji sprawdź stawki w zakładce **Taryfy**. Niezmienione presety
+   zostaną odświeżone automatycznie. Edytowane presety i własne taryfy
+   zachowują poprzednie wartości — uaktualnij je ręcznie lub wybierz
+   **Przywróć presety**, aby zastąpić edycje presetów nowymi wartościami.
+4. Sprawdź liczbę faz i cykl abonamentu. W sekcji opłaty mocowej wpisz pobór
+   kwalifikujący z odczytu Taurona albo pozostaw pole puste dla szacunku.
+   Usuń wcześniejszą opłatę mocową z opłat stałych lub zmiennych, jeżeli
+   włączasz jej naliczanie w nowej sekcji.
+5. Wykonaj nową analizę; zapisane wcześniej wyniki nie są przeliczane.
+
 ### Uprawnienia
 
 - `homeassistant_api: true` — dostęp do REST API i WebSocket Home Assistant
@@ -86,18 +117,77 @@ strefa wygrywa**, dlatego ostatnia strefa powinna pokrywać całą dobę.
 - Walidacja odrzuca taryfę, która nie pokrywa całego roku, wszystkich dni i
   godzin (z uwzględnieniem świąt).
 
-### Wbudowane taryfy (wartości przykładowe, netto)
+### Wbudowane taryfy (2026, netto)
 
 | Taryfa | Strefy | Uwagi |
 | --- | --- | --- |
 | G11 | jedna, cała doba | najprostsza |
-| G12 | szczyt: dni robocze 06–13 i 15–22 | weekendy poza szczytem, święta jak dzień roboczy |
+| G12 | dzienna 06–13 i 15–22 | te same strefy we wszystkie dni, również weekendy i święta |
 | G12w | szczyt: dni robocze 06–13 i 15–22 | weekendy i święta poza szczytem |
 | G13 | przedpołudniowy 07–13; popołudniowy zimą 16–21 (X–III), latem 19–22 (IV–IX) | weekendy i święta poza szczytem |
 
-Stawki energii i dystrybucji w presetach są przykładowe. Opłaty stałe i
-zmienne (przejściowa, OZE, kogeneracyjna, mocowa) oraz akcyza i VAT są
-wspólne dla wszystkich presetów i również podlegają edycji.
+### Stawki Tauron 2026
+
+Zweryfikowano 14.11.2026. Energia w zł/kWh netto **bez akcyzy**;
+kolumna „sieć” obejmuje wyłącznie składnik zmienny sieciowy.
+
+| Taryfa / strefa | Energia | Sieć |
+| --- | ---: | ---: |
+| G11 cała doba | 0,4970 | 0,2464 |
+| G12 dzienna | 0,5430 | 0,2841 |
+| G12 nocna | 0,4130 | 0,0558 |
+| G12w szczytowa | 0,6220 | 0,3298 |
+| G12w pozaszczytowa | 0,4130 | 0,0512 |
+| G13 przedpołudniowa | 0,4668 | 0,2203 |
+| G13 popołudniowa (lato i zima) | 0,7780 | 0,3898 |
+| G13 pozostałe godziny | 0,4210 | 0,0392 |
+
+Dodatkowe stawki netto za kWh: jakościowa **0,0332** (od 01.02.2026;
+w styczniu 0,0331), OZE **0,0073**, kogeneracyjna **0,0030**, akcyza **0,0050**.
+Opłata przejściowa nie obowiązuje od 01.01.2026; usunięto ją z presetów.
+
+Domyślne opłaty miesięczne netto: sieciowa **10,86 zł (3 fazy)**,
+abonament **4,56 zł (cykl 1 miesiąc)**, handlowa **0 zł**.
+Dla 1 fazy zmień sieciową na **7,38 zł**. Abonament przy cyklu
+2/6/12 miesięcy to odpowiednio **2,28/0,76/0,38 zł za miesiąc**.
+Dla oferty rynkowej wpisz opłatę handlową i ceny z własnej umowy.
+
+**Opłata mocowa** dla gospodarstw domowych jest miesięczna, a nie za kWh:
+
+| Pobór kwalifikujący | zł/miesiąc netto |
+| --- | ---: |
+| poniżej 500 kWh | 4,29 |
+| 500–1200 kWh (włącznie) | 10,31 |
+| powyżej 1200 do 2800 kWh (włącznie) | 17,18 |
+| powyżej 2800 kWh | 24,05 |
+
+W konfiguracji każdej taryfy można włączyć tę opłatę, zmienić cztery stawki
+oraz wpisać pobór kwalifikujący. Tauron kwalifikuje według ostatnich 12 miesięcy
+kończących się odczytem, a przy historii krótszej niż rok według poboru do
+ostatniego odczytu (przed pierwszym odczytem najniższy próg — wpisz 0).
+U prosumenta chodzi o pobór z sieci, nie całkowite zużycie domu ani eksport.
+Puste pole oznacza **szacunek** z analizowanego okresu:
+`kWh × 365,25 / liczba dni`; krótki okres i braki danych mogą zniekształcić próg.
+Wynik pokazuje podstawę i wybraną stawkę. Jedna stawka obowiązuje w całej
+symulacji oraz w szacunku rocznym; nie odtwarzamy zmian progu między odczytami.
+
+Presety porównują profil historyczny według **jednego skonfigurowanego cennika**,
+nie rekonstruują faktur ani zmian stawek w trakcie roku (w tym styczniowej jakościowej).
+Wszystkie opłaty miesięczne, również mocową, szacujemy proporcjonalnie do dni;
+faktura Taurona może inaczej rozliczać niepełne miesiące, zwłaszcza abonament.
+Aktualizacja odświeża niezmienione presety; własne taryfy i edytowane presety
+zachowują dotychczasowe wartości. Aby przejść na nowe stawki w edytowanych
+presetach, użyj „Przywróć presety” lub zmień je ręcznie. Zapisane analizy pozostają
+historycznymi wynikami — po aktualizacji wykonaj nową analizę.
+
+Źródła:
+
+- [Taryfa sprzedaży TAURON Sprzedaż 2026, URE nr 265/2025, pkt 1.6, 3.2 i 5](https://bip.ure.gov.pl/download/3/20340/TauronSprzedaz.pdf).
+- [Wyciąg taryfy dystrybucyjnej 2026, grupy G, pkt 3.1.33–36 oraz 7](https://www.tauron-dystrybucja.pl/-/media/offer-documents/dystrybucja/aktualna-taryfa/wyciag-z-taryfy-td-sa-na-rok-2026-dla-odbiorcow-grup-g.ashx).
+- [Zmiana stawki jakościowej od 1 lutego 2026](https://www.tauron-dystrybucja.pl/-/media/offer-documents/dystrybucja/aktualna-taryfa/nowa-stawka-oplaty-jakosciowej-od-1-lutego-2026r.ashx).
+- [Zasady opłaty mocowej Taurona](https://www.tauron-dystrybucja.pl/rynek-mocy/oplata-mocowa).
+- [Ministerstwo Energii: koniec opłaty przejściowej](https://www.gov.pl/web/energia/koniec-oplaty-przejsciowej-na-rachunkach-za-prad-od-2026-r).
+- [Wigilia dniem ustawowo wolnym od 2025 r.](https://eli.gov.pl/api/acts/DU/2024/1965/text.html) — uwzględniona w kalendarzu G12w/G13.
 
 ## Metodologia i założenia
 
@@ -109,7 +199,7 @@ wspólne dla wszystkich presetów i również podlegają edycji.
 - **Opłaty stałe:** miesięczne opłaty netto rozliczane proporcjonalnie do
   liczby dni w analizowanym okresie (`dni × 12 / 365,25`).
 - **Szacunek roczny:** koszty zmienne skalowane do 365,25 dnia + 12 opłat
-  stałych, następnie VAT.
+  stałych i mocowych, następnie VAT.
 - **VAT:** doliczany do sumy netto (domyślnie 23%). Akcyza i opłaty zmienne
   są liczone od każdej kWh.
 - **Ujemne przyrosty** (np. reset licznika) są pomijane; aplikacja pokazuje

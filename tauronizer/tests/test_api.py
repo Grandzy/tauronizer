@@ -235,3 +235,47 @@ def test_index_and_health(client: TestClient) -> None:
     index = client.get("/")
     assert index.status_code == 200
     assert "Tauronizer" in index.text
+
+
+def test_capacity_configuration_roundtrip(client):
+    base = client.get('/api/tariffs').json()['tariffs'][0]
+    base['config']['capacity_fee'] = {
+        'annual_kwh': 1200,
+        'net_monthly_rates': [4.29, 10.31, 17.18, 24.05],
+    }
+    response = client.post('/api/tariffs', json={'name': 'Mocowa', 'config': base['config']})
+    assert response.status_code == 201
+    saved = response.json()
+    assert saved['config']['capacity_fee'] == base['config']['capacity_fee']
+    client.app.state.ha = FakeHA(make_samples())
+    result = client.post('/api/analyze', json={
+        'entity_id': 'sensor.energia_dom', 'start': '2026-01-05', 'end': '2026-01-05',
+        'tariff_ids': [saved['id']],
+    }).json()
+    fee = result['tariffs'][0]['capacity_fee']
+    assert fee['net_monthly'] == 10.31
+    assert fee['estimated'] is False
+    stored = client.get(f"/api/analyses/{result['id']}").json()['result']
+    assert stored['tariffs'][0]['capacity_fee'] == fee
+
+
+@pytest.mark.parametrize('capacity', [
+    {'annual_kwh': -1},
+    {'net_monthly_rates': [1, 2, 3]},
+    {'net_monthly_rates': [1, 2, 3, 4, 5]},
+    {'net_monthly_rates': [1, -2, 3, 4]},
+    {'net_monthly_rates': [1, 2, 3, 10001]},
+])
+def test_invalid_capacity_fee_is_rejected(client, capacity):
+    base = client.get('/api/tariffs').json()['tariffs'][0]
+    base['config']['capacity_fee'] = capacity
+    response = client.post('/api/tariffs', json={'name': 'Zła', 'config': base['config']})
+    assert response.status_code == 422
+
+
+def test_legacy_config_without_capacity_is_still_accepted(client):
+    base = client.get('/api/tariffs').json()['tariffs'][0]
+    del base['config']['capacity_fee']
+    response = client.post('/api/tariffs', json={'name': 'Starsza taryfa', 'config': base['config']})
+    assert response.status_code == 201
+    assert response.json()['config']['capacity_fee'] is None

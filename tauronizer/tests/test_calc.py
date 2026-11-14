@@ -40,13 +40,13 @@ def test_g11_totals_and_breakdown() -> None:
     assert result["days"] == 1
     cost = result["tariffs"][0]
     assert cost["error"] is None
-    assert cost["total_pln"] == pytest.approx(8.52, abs=0.01)
-    assert cost["per_kwh_pln"] == pytest.approx(1.065, abs=0.005)
+    assert cost["total_pln"] == pytest.approx(9.38, abs=0.01)
+    assert cost["per_kwh_pln"] == pytest.approx(1.1725, abs=0.005)
     breakdown = cost["breakdown"]
-    assert breakdown["energy_pln"] == pytest.approx(3.68, abs=0.01)
-    assert breakdown["distribution_pln"] == pytest.approx(2.40, abs=0.01)
-    assert breakdown["variable_fees_pln"] == pytest.approx(0.27, abs=0.01)
-    assert breakdown["fixed_pln"] == pytest.approx(0.54, abs=0.01)
+    assert breakdown["energy_pln"] == pytest.approx(3.98, abs=0.01)
+    assert breakdown["distribution_pln"] == pytest.approx(1.97, abs=0.01)
+    assert breakdown["variable_fees_pln"] == pytest.approx(0.35, abs=0.01)
+    assert breakdown["fixed_pln"] == pytest.approx(0.51, abs=0.01)
     assert sum(
         [
             breakdown["energy_pln"],
@@ -54,6 +54,7 @@ def test_g11_totals_and_breakdown() -> None:
             breakdown["variable_fees_pln"],
             breakdown["excise_pln"],
             breakdown["fixed_pln"],
+            breakdown["capacity_fee_pln"],
             breakdown["vat_pln"],
         ]
     ) == pytest.approx(breakdown["total_pln"], abs=0.03)
@@ -152,3 +153,62 @@ def test_negative_samples_are_ignored() -> None:
 def test_invalid_range() -> None:
     with pytest.raises(ValueError):
         analyze([tariff("g11")], [], date(2026, 1, 6), date(2026, 1, 5))
+
+
+@pytest.mark.parametrize("annual_kwh,rate", [
+    (0, 4.29), (499.999, 4.29), (500, 10.31), (1200, 10.31),
+    (1200.001, 17.18), (2800, 17.18), (2800.001, 24.05), (10000, 24.05),
+])
+def test_capacity_tier_boundaries(annual_kwh, rate):
+    from copy import deepcopy
+    item = deepcopy(tariff("g11"))
+    item["config"]["capacity_fee"]["annual_kwh"] = annual_kwh
+    result = analyze([item], day_samples(date(2026, 1, 5)), date(2026, 1, 5), date(2026, 1, 5))
+    cost = result["tariffs"][0]
+    assert cost["capacity_fee"]["net_monthly"] == rate
+    assert cost["capacity_fee"]["estimated"] is False
+    assert cost["breakdown"]["capacity_fee_pln"] == round(rate * 12 / 365.25, 2)
+
+
+def test_capacity_estimate_and_custom_rates():
+    from copy import deepcopy
+    item = deepcopy(tariff("g11"))
+    item["config"]["capacity_fee"]["net_monthly_rates"] = [1, 2, 3, 4]
+    result = analyze([item], day_samples(date(2026, 1, 5)), date(2026, 1, 5), date(2026, 1, 5))
+    fee = result["tariffs"][0]["capacity_fee"]
+    assert fee == {"annual_kwh": 2922, "estimated": True, "tier": 3, "net_monthly": 4}
+
+
+def test_net_components_then_single_vat_and_annual_capacity():
+    # Independent contract example, no dependence on preset prices.
+    item = tariff("g11")
+    item["config"] = {
+        "zones": [{"id": "all", "name": "All", "days": list(range(7)),
+                   "intervals": ["00:00-24:00"], "energy_net": 0.5, "distribution_net": 0.2}],
+        "fixed_fees": [{"name": "Sieć", "net_monthly": 10}],
+        "variable_fees": [{"name": "Dodatki", "net_per_kwh": 0.03}],
+        "excise_net_per_kwh": 0.005,
+        "vat_percent": 23,
+        "capacity_fee": {"annual_kwh": 1200, "net_monthly_rates": [4.29, 10.31, 17.18, 24.05]},
+    }
+    result = analyze([item], [sample(datetime(2026, 1, 5, 10, tzinfo=TZ), 100)], date(2026, 1, 1), date(2026, 12, 31))
+    cost = result["tariffs"][0]
+    # 50 energy + 20 distribution + 3 extras + 0.5 excise + monthly fees prorated.
+    expected_net = round(73.5 + (10 + 10.31) * 365 * 12 / 365.25, 2)
+    assert cost["breakdown"]["net_pln"] == expected_net
+    assert cost["breakdown"]["vat_pln"] == round(expected_net * 0.23, 2)
+    assert cost["total_pln"] == round(expected_net + round(expected_net * 0.23, 2), 2)
+    assert cost["annual_pln"] == round((73.5 * 365.25 / 365 + 20.31 * 12) * 1.23, 2)
+    item["config"]["vat_percent"] = 0
+    no_vat = analyze([item], [sample(datetime(2026, 1, 5, 10, tzinfo=TZ), 100)], date(2026, 1, 1), date(2026, 12, 31))["tariffs"][0]
+    assert no_vat["total_pln"] == expected_net
+    assert no_vat["breakdown"]["vat_pln"] == 0
+
+
+def test_legacy_tariff_without_capacity_is_not_charged_automatically():
+    from copy import deepcopy
+    item = deepcopy(tariff("g11"))
+    del item["config"]["capacity_fee"]
+    cost = analyze([item], [], date(2026, 1, 1), date(2026, 12, 31))["tariffs"][0]
+    assert cost["capacity_fee"] is None
+    assert cost["breakdown"]["capacity_fee_pln"] == 0

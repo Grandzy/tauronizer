@@ -1,0 +1,237 @@
+from __future__ import annotations
+
+from datetime import date, datetime, timezone
+
+import pytest
+from fastapi.testclient import TestClient
+
+from tauronizer.calc import ConsumptionSample
+from tauronizer.ha_client import HAError
+from tauronizer.main import app
+from tauronizer.tariffs import TZ
+
+
+class FakeHA:
+    is_supervisor = True
+
+    def __init__(self, samples: list[ConsumptionSample] | None = None) -> None:
+        self.samples = samples if samples is not None else []
+
+    async def get_entity(self, entity_id: str):
+        return {
+            "entity_id": entity_id,
+            "state": "100.0",
+            "attributes": {
+                "friendly_name": "Energia domu",
+                "unit_of_measurement": "kWh",
+                "device_class": "energy",
+                "state_class": "total_increasing",
+            },
+        }
+
+    async def get_statistics(self, entity_id, start, end):
+        return self.samples, "kWh"
+
+    async def close(self):
+        pass
+
+
+@pytest.fixture
+def client(tmp_path, monkeypatch):
+    monkeypatch.setenv("DATA_DIR", str(tmp_path))
+    with TestClient(app) as test_client:
+        yield test_client
+
+
+def make_samples() -> list[ConsumptionSample]:
+    day = date(2026, 1, 5)
+    hours = [(10, 2.0), (20, 2.0), (3, 4.0)]
+    return [
+        ConsumptionSample(
+            timestamp=datetime(day.year, day.month, day.day, hour, tzinfo=TZ).astimezone(
+                timezone.utc
+            ),
+            kwh=kwh,
+        )
+        for hour, kwh in hours
+    ]
+
+
+def test_presets_are_seeded(client: TestClient) -> None:
+    response = client.get("/api/tariffs")
+    assert response.status_code == 200
+    tariffs = response.json()["tariffs"]
+    assert {item["preset_id"] for item in tariffs} == {"g11", "g12", "g12w", "g13"}
+    assert all(item["is_preset"] for item in tariffs)
+
+
+def test_tariff_crud(client: TestClient) -> None:
+    base = client.get("/api/tariffs").json()["tariffs"][0]
+
+    created = client.post(
+        "/api/tariffs",
+        json={
+            "name": "Moja taryfa",
+            "description": "Test",
+            "config": base["config"],
+        },
+    )
+    assert created.status_code == 201, created.text
+    tariff = created.json()
+    assert tariff["name"] == "Moja taryfa"
+    assert tariff["is_preset"] is False
+
+    updated = client.put(
+        f"/api/tariffs/{tariff['id']}",
+        json={
+            "name": "Moja taryfa 2",
+            "description": "Po zmianie",
+            "config": base["config"],
+        },
+    )
+    assert updated.status_code == 200
+    assert updated.json()["name"] == "Moja taryfa 2"
+
+    duplicated = client.post(f"/api/tariffs/{tariff['id']}/duplicate")
+    assert duplicated.status_code == 201
+    assert duplicated.json()["name"] == "Moja taryfa 2 (kopia)"
+
+    deleted = client.delete(f"/api/tariffs/{duplicated.json()['id']}")
+    assert deleted.status_code == 200
+    assert deleted.json()["deleted"] is True
+
+    missing = client.delete("/api/tariffs/does-not-exist")
+    assert missing.status_code == 404
+
+
+def test_invalid_tariff_is_rejected(client: TestClient) -> None:
+    response = client.post(
+        "/api/tariffs",
+        json={
+            "name": "Dziura",
+            "description": "",
+            "config": {
+                "zones": [
+                    {
+                        "id": "peak",
+                        "name": "Szczyt",
+                        "days": [0, 1, 2, 3, 4],
+                        "intervals": ["06:00-22:00"],
+                        "energy_net": 0.5,
+                        "distribution_net": 0.3,
+                    }
+                ],
+                "fixed_fees": [],
+                "variable_fees": [],
+            },
+        },
+    )
+    assert response.status_code == 400
+    assert "nie pokrywa" in response.json()["detail"]
+
+
+def test_restore_presets(client: TestClient) -> None:
+    preset = client.get("/api/tariffs").json()["tariffs"][0]
+    assert client.delete(f"/api/tariffs/{preset['id']}").status_code == 200
+
+    response = client.post("/api/tariffs/restore-presets")
+    assert response.status_code == 200
+    assert response.json()["restored"] == 4
+
+    tariffs = client.get("/api/tariffs").json()["tariffs"]
+    assert len(tariffs) == 4
+
+
+def test_analyze_and_history(client: TestClient) -> None:
+    client.app.state.ha = FakeHA(make_samples())
+    response = client.post(
+        "/api/analyze",
+        json={
+            "entity_id": "sensor.energia_dom",
+            "start": "2026-01-05",
+            "end": "2026-01-05",
+            "tariff_ids": [],
+        },
+    )
+    assert response.status_code == 200, response.text
+    result = response.json()
+    assert result["total_kwh"] == 8.0
+    assert result["entity_name"] == "Energia domu"
+    assert result["cheapest_tariff_id"]
+    assert result["id"]
+    assert result["warnings"] == []
+    assert len(result["tariffs"]) == 4
+
+    history = client.get("/api/analyses").json()["analyses"]
+    assert len(history) == 1
+    assert history[0]["id"] == result["id"]
+    assert history[0]["cheapest_name"]
+
+    detail = client.get(f"/api/analyses/{result['id']}")
+    assert detail.status_code == 200
+    assert detail.json()["result"]["total_kwh"] == 8.0
+
+    assert client.delete(f"/api/analyses/{result['id']}").status_code == 200
+    assert client.get("/api/analyses").json()["analyses"] == []
+
+
+def test_analyze_rejects_future_and_reversed_ranges(client: TestClient) -> None:
+    client.app.state.ha = FakeHA(make_samples())
+    reversed_range = client.post(
+        "/api/analyze",
+        json={
+            "entity_id": "sensor.energia_dom",
+            "start": "2026-01-06",
+            "end": "2026-01-05",
+        },
+    )
+    assert reversed_range.status_code == 400
+
+    future = client.post(
+        "/api/analyze",
+        json={
+            "entity_id": "sensor.energia_dom",
+            "start": "2026-01-05",
+            "end": "2099-01-01",
+        },
+    )
+    assert future.status_code == 400
+
+
+def test_analyze_without_statistics(client: TestClient) -> None:
+    client.app.state.ha = FakeHA([])
+    response = client.post(
+        "/api/analyze",
+        json={
+            "entity_id": "sensor.energia_dom",
+            "start": "2026-01-05",
+            "end": "2026-01-05",
+        },
+    )
+    assert response.status_code == 400
+    assert "statystyk" in response.json()["detail"]
+
+
+def test_analyze_unknown_entity(client: TestClient) -> None:
+    class BrokenHA(FakeHA):
+        async def get_entity(self, entity_id: str):
+            raise HAError("Nie znaleziono encji")
+
+    client.app.state.ha = BrokenHA()
+    response = client.post(
+        "/api/analyze",
+        json={
+            "entity_id": "sensor.nie_ma",
+            "start": "2026-01-05",
+            "end": "2026-01-05",
+        },
+    )
+    assert response.status_code == 400
+    assert "Nie znaleziono" in response.json()["detail"]
+
+
+def test_index_and_health(client: TestClient) -> None:
+    assert client.get("/health").json()["status"] == "ok"
+    index = client.get("/")
+    assert index.status_code == 200
+    assert "Tauronizer" in index.text

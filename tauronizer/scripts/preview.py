@@ -18,6 +18,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "app"))
 os.environ.setdefault("DATA_DIR", str(ROOT / "data-preview"))
+os.environ.setdefault("KOMPAS_AUTO_SYNC", "0")
 
 import uvicorn  # noqa: E402
 
@@ -81,6 +82,10 @@ class DemoHA:
     async def get_statistics(self, entity_id, start, end):
         return demo_samples(start, end), "kWh"
 
+    async def publish_mqtt(self, topic, payload, *, retain):
+        # Demo only: no connection to a real broker or Home Assistant.
+        pass
+
     async def close(self):
         pass
 
@@ -119,7 +124,10 @@ async def main() -> None:
     serve_task = asyncio.create_task(server.serve())
     while not server.started:
         await asyncio.sleep(0.05)
+    original_ha = app.state.ha
     app.state.ha = DemoHA()
+    app.state.sensors.ha = app.state.ha
+    await original_ha.close()
     print("Tauronizer preview: http://127.0.0.1:8099")
     await serve_task
 

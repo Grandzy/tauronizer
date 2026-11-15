@@ -1820,3 +1820,39 @@ select.input {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
 }
+
+/* MQTT sensor status */
+.sensor-card { margin-top: 20px; }
+.sensor-card p { margin-top: 12px; }
+.sensor-values {
+  display: grid;
+  grid-template-columns: minmax(180px, 0.8fr) minmax(0, 1.2fr);
+  gap: 12px 20px;
+  margin: 24px 0;
+  padding: 20px 0;
+  border-top: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+}
+.sensor-values dt { color: var(--muted); font-size: 13px; }
+.sensor-values dd { margin: 0; overflow-wrap: anywhere; }
+#sensor-current { font-size: 18px; font-weight: 700; }
+@media (max-width: 600px) {
+  .sensor-values { grid-template-columns: minmax(0, 1fr); gap: 4px; }
+  .sensor-values dd { margin-bottom: 12px; }
+}
+
+/* G14dynamic receives its schedule from PSE, so only prices and names are editable. */
+.zone-editor [hidden], .group-head [hidden] { display: none !important; }
+
+.tariff-zone-help { margin: 16px 0; padding: 12px; border: 1px solid var(--border); border-radius: 12px; }
+.tariff-zone-help summary { cursor: pointer; font-weight: 600; }
+.tariff-zone-help p { margin-top: 12px; font-size: 13px; color: var(--muted); }
+.tariff-zone-help dt { margin-top: 14px; font-size: 13px; font-weight: 700; }
+.tariff-zone-help dd { margin: 4px 0 0; font-size: 13px; color: var(--muted); }
+.tariff-card:has(.tariff-zone-help[open]) { grid-column: 1 / -1; }
+.tariff-zone-help dl { display: grid; grid-template-columns: minmax(180px, 0.4fr) minmax(0, 1fr); gap: 14px 20px; margin: 16px 0; }
+.tariff-zone-help dt, .tariff-zone-help dd { margin: 0; }
+@media (max-width: 600px) {
+  .tariff-zone-help dl { grid-template-columns: minmax(0, 1fr); gap: 4px; }
+  .tariff-zone-help dd { margin-bottom: 12px; }
+}

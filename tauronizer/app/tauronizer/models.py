@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import re
 from datetime import date
-from typing import Annotated, Any
+from typing import Annotated, Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
@@ -16,12 +16,14 @@ class Zone(BaseModel):
 
     id: str = Field(min_length=1, max_length=40, pattern=r"^[A-Za-z0-9_-]+$")
     name: str = Field(min_length=1, max_length=80)
+    description: str = Field(default="", max_length=600)
     days: list[int] = Field(default_factory=lambda: list(range(7)))
     intervals: list[str] = Field(min_length=1, max_length=12)
     energy_net: float = Field(ge=0, le=10)
     distribution_net: float = Field(ge=0, le=10)
     exclude_holidays: bool = False
     is_default: bool = False
+    kompas_level: int | None = Field(default=None, ge=0, le=3)
     months: list[int] | None = Field(default=None, min_length=1, max_length=12)
 
     @field_validator("days")
@@ -86,6 +88,7 @@ class TariffConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     zones: list[Zone] = Field(min_length=1, max_length=16)
+    zone_source: Literal['schedule', 'pse_kompas'] = 'schedule'
     fixed_fees: list[FixedFee] = Field(default_factory=list, max_length=20)
     variable_fees: list[VariableFee] = Field(default_factory=list, max_length=20)
     capacity_fee: CapacityFee | None = None
@@ -127,3 +130,9 @@ class TariffSummary(BaseModel):
     config: dict[str, Any]
     created_at: str
     updated_at: str
+
+
+class SensorSettings(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+    tariff_id: str | None = Field(default=None, max_length=100)
+    price_mode: Literal['net', 'gross'] | None = None

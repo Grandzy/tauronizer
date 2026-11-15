@@ -46,6 +46,13 @@ CREATE TABLE IF NOT EXISTS settings (
     value TEXT NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS kompas_hours (
+    utc_hour TEXT PRIMARY KEY,
+    business_date TEXT NOT NULL,
+    level INTEGER NOT NULL CHECK(level BETWEEN 0 AND 3),
+    publication_utc TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_kompas_date ON kompas_hours(business_date);
 CREATE INDEX IF NOT EXISTS idx_analyses_created ON analyses(created_at DESC);
 """
 
@@ -112,7 +119,7 @@ def init_db() -> None:
             elif _get_setting(connection, "presets_version") != str(PRESET_VERSION):
                 _upgrade_presets(connection)
             _set_setting(connection, "presets_version", str(PRESET_VERSION))
-            _set_setting(connection, "schema_version", "1")
+            _set_setting(connection, "schema_version", "2")
 
 
 def _upgrade_presets(connection: sqlite3.Connection) -> None:
@@ -401,3 +408,65 @@ def delete_analysis(analysis_id: str) -> bool:
     with _connect() as connection, connection:
         cursor = connection.execute("DELETE FROM analyses WHERE id = ?", (analysis_id,))
     return cursor.rowcount > 0
+
+
+def get_setting(key: str) -> str | None:
+    with _connect() as connection:
+        return _get_setting(connection, key)
+
+
+def set_setting(key: str, value: str) -> None:
+    with _connect() as connection, connection:
+        _set_setting(connection, key, value)
+
+
+def save_kompas(rows: list[dict[str, Any]], checkpoint: dict[str, str] | None = None) -> None:
+    with _connect() as connection, connection:
+        connection.executemany(
+            'INSERT INTO kompas_hours(utc_hour,business_date,level,publication_utc) VALUES(?,?,?,?) '
+            'ON CONFLICT(utc_hour) DO UPDATE SET level=excluded.level, publication_utc=excluded.publication_utc '
+            'WHERE excluded.publication_utc >= kompas_hours.publication_utc',
+            [(r['utc_hour'], r['business_date'], r['level'], r['publication_utc']) for r in rows])
+        for key, value in (checkpoint or {}).items():
+            _set_setting(connection, key, value)
+
+
+def kompas_levels() -> dict[str, int]:
+    with _connect() as connection:
+        return {row['utc_hour']: row['level'] for row in connection.execute('SELECT utc_hour,level FROM kompas_hours')}
+
+
+def kompas_level(utc_hour: str) -> int | None:
+    with _connect() as connection:
+        row = connection.execute('SELECT level FROM kompas_hours WHERE utc_hour=?', (utc_hour,)).fetchone()
+        return row['level'] if row else None
+
+
+def kompas_summary() -> dict[str, Any]:
+    with _connect() as connection:
+        row = connection.execute('SELECT COUNT(*) AS hours,MIN(business_date) AS first_day,MAX(business_date) AS last_day FROM kompas_hours').fetchone()
+        return dict(row)
+
+
+def kompas_gaps() -> list[dict[str, Any]]:
+    """Missing archive hours, using 23/25-hour local days at DST changes."""
+    from datetime import date, time, timedelta
+    from .tariffs import TZ
+    through = get_setting('kompas_history_through')
+    if not through:
+        return []
+    with _connect() as connection:
+        counts = {row['business_date']: row['hours'] for row in connection.execute(
+            'SELECT business_date,COUNT(*) AS hours FROM kompas_hours WHERE business_date<=? GROUP BY business_date', (through,))}
+    if not counts:
+        return []
+    day, end = date.fromisoformat(min(counts)), date.fromisoformat(through)
+    result = []
+    while day <= end:
+        start = datetime.combine(day,time(),tzinfo=TZ).astimezone(timezone.utc)
+        stop = datetime.combine(day+timedelta(days=1),time(),tzinfo=TZ).astimezone(timezone.utc)
+        missing = int((stop-start).total_seconds()/3600) - counts.get(day.isoformat(),0)
+        if missing:
+            result.append({'day':day.isoformat(),'missing_hours':missing})
+        day += timedelta(days=1)
+    return result

@@ -40,13 +40,13 @@ def test_g11_totals_and_breakdown() -> None:
     assert result["days"] == 1
     cost = result["tariffs"][0]
     assert cost["error"] is None
-    assert cost["total_pln"] == pytest.approx(9.38, abs=0.01)
-    assert cost["per_kwh_pln"] == pytest.approx(1.1725, abs=0.005)
+    assert cost["total_pln"] == pytest.approx(9.20, abs=0.01)
+    assert cost["per_kwh_pln"] == pytest.approx(1.15, abs=0.005)
     breakdown = cost["breakdown"]
     assert breakdown["energy_pln"] == pytest.approx(3.98, abs=0.01)
     assert breakdown["distribution_pln"] == pytest.approx(1.97, abs=0.01)
     assert breakdown["variable_fees_pln"] == pytest.approx(0.35, abs=0.01)
-    assert breakdown["fixed_pln"] == pytest.approx(0.51, abs=0.01)
+    assert breakdown["fixed_pln"] == pytest.approx(0.36, abs=0.01)
     assert sum(
         [
             breakdown["energy_pln"],

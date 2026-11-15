@@ -7,7 +7,7 @@
 const DAYS = ['Pn', 'Wt', 'Śr', 'Cz', 'Pt', 'So', 'Nd'];
 const MONTHS = ['Sty', 'Lut', 'Mar', 'Kwi', 'Maj', 'Cze', 'Lip', 'Sie', 'Wrz', 'Paź', 'Lis', 'Gru'];
 const MONTHS_FULL = ['styczeń', 'luty', 'marzec', 'kwiecień', 'maj', 'czerwiec', 'lipiec', 'sierpień', 'wrzesień', 'październik', 'listopad', 'grudzień'];
-const QUICK_TABS = new Set(['analysis', 'tariffs', 'history']);
+const QUICK_TABS = new Set(['analysis', 'tariffs', 'history', 'sensors']);
 
 const state = {
   config: null,
@@ -20,6 +20,8 @@ const state = {
   selectionInitialized: false,
   busy: false,
   editingTariff: null,
+  sensors: null,
+  sensorDirty: false,
 };
 
 const $ = (selector, root = document) => root.querySelector(selector);
@@ -183,7 +185,83 @@ function switchTab(tab) {
   if (window.location.pathname + window.location.search + window.location.hash !== target) {
     window.history.replaceState(null, '', target);
   }
+  if (tab === 'tariffs') loadKompas();
   if (tab === 'history') loadHistory();
+  if (tab === 'sensors') loadSensors();
+}
+
+function renderSensorTariffs() {
+  const select = $('#sensor-tariff');
+  if (document.activeElement === select) return;
+  const selected = state.sensorDirty ? select.value : (state.sensors?.tariff_id || '');
+  select.innerHTML = '<option value="">Nie publikuj sensorów</option>' + state.tariffs.map((tariff) =>
+    `<option value="${escapeHtml(tariff.id)}">${escapeHtml(tariff.name)}</option>`).join('');
+  if (selected && !state.tariffs.some((tariff) => tariff.id === selected)) {
+    select.insertAdjacentHTML('beforeend', `<option value="${escapeHtml(selected)}">Usunięta taryfa — wybierz inną</option>`);
+  }
+  select.value = selected;
+  if (!state.sensorDirty && document.activeElement !== $('#sensor-price-mode')) {
+    $('#sensor-price-mode').value = state.sensors?.price_mode || 'gross';
+  }
+}
+
+async function loadSensors() {
+  try {
+    const data = await api('api/sensors');
+    state.sensors = data;
+    renderSensorTariffs();
+    $('#sensor-current').textContent = data.current_zone || '—';
+    $('#sensor-published').textContent = data.published_state || '—';
+    const priceLabel = (price, mode) => price == null ? '—' :
+      `${formatNumber(price, 6)} zł/kWh ${mode === 'net' ? 'netto' : 'brutto'}`;
+    $('#sensor-price-current').textContent = priceLabel(data.current_price, data.price_mode);
+    $('#sensor-price-published').textContent = priceLabel(data.published_price, data.published_price_mode);
+    const labels = { disabled: 'Publikacja wyłączona', published: 'Opublikowano przez MQTT',
+      missing_tariff: 'Wybrana taryfa nie istnieje', error: 'Błąd publikacji — ponawiam automatycznie' };
+    $('#sensor-status').textContent = data.error || labels[data.status] || 'Oczekiwanie na publikację';
+    $('#sensor-updated').textContent = data.last_published
+      ? new Date(data.last_published).toLocaleString('pl-PL', {timeZone: 'Europe/Warsaw'}) : '—';
+  } catch (error) {
+    $('#sensor-status').textContent = `Nie udało się pobrać statusu: ${error.message}`;
+  }
+}
+
+async function loadKompas() {
+  try {
+    const data = await api('api/kompas');
+    const labels = {waiting: 'Oczekiwanie na import', updating: 'Aktualizacja ostatnich dni', importing: 'Import historii w tle', ready: 'Baza uzupełniona', error: 'Import przerwany — ponawiam'};
+    $('#kompas-status').textContent = `${labels[data.status] || data.status}. ${data.hours} godzin w bazie` +
+      (data.first_day ? ` (${formatDate(data.first_day)} – ${formatDate(data.last_day)})` : '') +
+      (data.last_sync ? ` · ostatnia synchronizacja: ${new Date(data.last_sync).toLocaleString('pl-PL')}` : '') +
+      (data.missing_archive_hours ? ` · brakujące godziny w archiwum: ${data.missing_archive_hours} (będą uzupełniane)` : '') +
+      (data.error ? `. ${data.error}` : '');
+  } catch (error) { $('#kompas-status').textContent = error.message; }
+}
+
+function bindSensorEvents() {
+  $('#refresh-kompas').addEventListener('click', async () => {
+    try { await api('api/kompas/refresh', {method: 'POST'}); toast('Zlecono uzupełnienie danych Kompasu PSE.', 'success'); await loadKompas(); }
+    catch (error) { toast(error.message, 'error'); }
+  });
+  window.setInterval(() => { if (!document.hidden && !$('#tab-tariffs').hidden) loadKompas(); }, 10000);
+  $('#sensor-tariff').addEventListener('change', () => { state.sensorDirty = true; });
+  $('#sensor-price-mode').addEventListener('change', () => { state.sensorDirty = true; });
+  $('#sensor-settings').addEventListener('submit', async (event) => {
+    event.preventDefault();
+    const button = $('#sensor-save');
+    button.disabled = true;
+    try {
+      const data = await api('api/sensors', {method: 'PUT', body: JSON.stringify({tariff_id: $('#sensor-tariff').value || null, price_mode: $('#sensor-price-mode').value})});
+      state.sensorDirty = false;
+      state.sensors = data;
+      await loadSensors();
+      toast(data.error ? 'Zapisano taryfę. Sprawdź status publikacji MQTT.' : 'Zapisano ustawienia sensora.', data.error ? 'error' : 'success');
+    } catch (error) { toast(error.message, 'error'); }
+    finally { button.disabled = false; }
+  });
+  window.setInterval(() => {
+    if (!document.hidden && !$('#tab-sensors').hidden && !$('#sensor-save').disabled) loadSensors();
+  }, 5000);
 }
 
 /* ------------------------------------------------------------------ theme */
@@ -259,7 +337,7 @@ async function loadConfig() {
     $('#app-version').textContent = `v${config.version}`;
     $('#tariff-disclaimer').innerHTML = `
       <span><strong>Zanim porównasz:</strong> ${escapeHtml(config.disclaimer)}
-      Wbudowane taryfy (G11, G12, G12w, G13) są edytowalne — możesz też skopiować preset
+      Wbudowane taryfy (G11, G12, G12w, G13, G14dynamic) są edytowalne — możesz też skopiować preset
       i dopasować go do własnej umowy.</span>`;
   } catch (error) {
     toast(`Nie udało się wczytać konfiguracji: ${error.message}`, 'error', 8000);
@@ -338,6 +416,8 @@ async function loadTariffs() {
 
     renderTariffChips();
     renderTariffGrid();
+    loadKompas();
+    renderSensorTariffs();
     updateToggleLabel();
   } catch (error) {
     $('#tariff-chips').innerHTML = '<span class="muted small">Nie udało się wczytać taryf.</span>';
@@ -726,6 +806,7 @@ function monthsLabel(months) {
 }
 
 function isDefaultZone(zone) {
+  if (zone.kompas_level != null) return false;
   return Boolean(zone.is_default) || (
     (zone.days || []).length === 7 && !(zone.months || []).length &&
     (zone.intervals || []).length === 1 && zone.intervals[0] === '00:00-24:00' &&
@@ -734,11 +815,27 @@ function isDefaultZone(zone) {
 }
 
 function zoneSchedule(zone) {
+  if (zone.kompas_level != null) return `Strefa S${Number(zone.kompas_level) + 1} — godziny z Kompasu PSE`;
   if (isDefaultZone(zone)) return 'Pozostałe godziny — strefa domyślna';
   const days = (zone.days || []).map((day) => DAYS[day]).join(', ');
   const intervals = (zone.intervals || []).join(', ');
   const months = monthsLabel(zone.months);
   return `${days} · ${intervals}${months ? ` · mies.: ${months}` : ''}`;
+}
+
+function zoneDescription(zone) {
+  return zone.description || (zone.kompas_level != null
+    ? state.config?.kompas_zone_descriptions?.[zone.kompas_level] || '' : '');
+}
+
+function tariffZoneHelp(config) {
+  if (config.zone_source !== 'pse_kompas') return '';
+  return `<details class="tariff-zone-help">
+    <summary>Co oznaczają strefy S1–S4?</summary>
+    <p>Kompas PSE wskazuje, kiedy systemowi energetycznemu sprzyja większe lub mniejsze zużycie energii, m.in. w zależności od produkcji OZE i zapotrzebowania.</p>
+    <dl>${(config.zones || []).map(zone => `<dt>${escapeHtml(zone.name)}</dt><dd>${escapeHtml(zoneDescription(zone))}</dd>`).join('')}</dl>
+    <p>Godziny stref zmieniają się z dnia na dzień — nie są stałym harmonogramem. S1–S4 zmieniają cenę dystrybucji; cena samej energii pozostaje stała według cennika. Do dystrybucji dochodzą energia i pozostałe opłaty.</p>
+  </details>`;
 }
 
 function renderTariffGrid() {
@@ -774,6 +871,7 @@ function renderTariffGrid() {
         <p class="muted">${escapeHtml(tariff.description || 'Taryfa własna.')}</p>
         <p class="muted small">Strefy: energia + sieć, netto zł/kWh, bez akcyzy i opłat dodatkowych.</p>
         <div class="zone-pills">${pills || '<span class="muted small">Brak stref</span>'}</div>
+        ${tariffZoneHelp(config)}
         <div class="tariff-meta">
           <span>${range ? `zmienne brutto: <b>${formatNumber(range.min, 2)}${range.max - range.min > 0.001 ? `–${formatNumber(range.max, 2)}` : ''} zł/kWh</b>` : 'brak cen'}</span>
           <span>stałe: <b>${formatPLN(fixed)}</b>/mies. netto${config.capacity_fee ? " + mocowa według progu zużycia" : ""}</span>
@@ -868,11 +966,12 @@ function zoneEditorHtml(zone = {}) {
       ${label}
     </label>`).join('');
   return `
-    <div class="zone-editor" data-zone-id="${escapeHtml(id)}">
+    <div class="zone-editor" data-zone-id="${escapeHtml(id)}" ${zone.kompas_level != null ? `data-kompas-level="${Number(zone.kompas_level)}"` : ''}>
       <div class="zone-editor-head">
         <input class="input zone-name" value="${escapeHtml(isDefault && zone.name === 'Pozaszczyt' ? 'Pozostałe godziny — strefa domyślna' : (zone.name || ''))}" maxlength="80" placeholder="Nazwa strefy, np. Szczyt">
         <button type="button" class="icon-button small" data-remove-zone title="Usuń strefę" aria-label="Usuń strefę">✕</button>
       </div>
+      ${zoneDescription(zone) ? `<p class="muted small" data-zone-description>${escapeHtml(zoneDescription(zone))}</p>` : ''}
       <label class="check-row">
         <input type="checkbox" class="zone-default" ${isDefault ? 'checked' : ''}>
         Pozostałe godziny — strefa domyślna
@@ -995,7 +1094,7 @@ function openTariffEditor(tariff) {
                   <button type="button" class="link-button" data-add-fee="fixed">+ Dodaj</button>
                 </div>
                 <div id="fixed-fees">${fixedFees.map((fee) => feeRowHtml(fee, 'fixed')).join('')}</div>
-                <p class="field-hint">Miesięczne, netto; proporcjonalnie do okresu. Sieciowa: 1 faza 7,38 zł; 3 fazy 10,86 zł. Abonament dla cyklu 1/2/6/12 mies.: 4,56/2,28/0,76/0,38 zł miesięcznie. Opłatę handlową wpisz z umowy.</p>
+                <p class="field-hint">Miesięczne, netto; proporcjonalnie do okresu. Sieciowa: 1 faza 7,38 zł; 3 fazy 10,86 zł. Abonament od 01.10.2026 nie jest naliczany (0 zł). Opłatę handlową wpisz z umowy.</p>
               </div>
               <div>
                 <div class="group-head">
@@ -1050,6 +1149,11 @@ function openTariffEditor(tariff) {
       </form>
     </div>`);
   $$('.zone-editor', $('#zone-list')).forEach(syncDefaultZoneEditor);
+  if (config.zone_source === 'pse_kompas') {
+    $('[data-add-zone]', $('#tariff-form')).hidden = true;
+    $$('.zone-default', $('#zone-list')).forEach(input => { input.closest('label').hidden = true; });
+    $('#zone-list').previousElementSibling.querySelector('p').textContent = 'Strefy S1–S4 wybiera Kompas PSE. Możesz edytować nazwy i stawki; godzin nie ustawia się ręcznie.';
+  }
 }
 
 function showFormError(message) {
@@ -1075,9 +1179,18 @@ function readFees(form, containerId, key) {
 }
 
 function syncDefaultZoneEditor(row) {
+  const dynamic = row.dataset.kompasLevel != null;
   const enabled = $('.zone-default', row).checked;
+  $('.zone-default', row).disabled = dynamic;
+  $('[data-remove-zone]', row).disabled = dynamic;
+  if (dynamic) {
+    $('.zone-default', row).closest('label').hidden = true;
+    $('.zone-default', row).closest('label').nextElementSibling.textContent = `Strefa S${Number(row.dataset.kompasLevel) + 1} — godziny pobierane z Kompasu PSE.`;
+    $$('.day-input, .month-input, .zone-intervals', row).forEach(input => { input.closest('.field').hidden = true; });
+    $('.zone-holidays', row).closest('label').hidden = true;
+  }
   $$('.day-input, .month-input, .zone-intervals, .zone-holidays', row).forEach((input) => {
-    input.disabled = enabled;
+    input.disabled = enabled || dynamic;
   });
   if (enabled) {
     $$('.day-input', row).forEach((input) => { input.checked = true; });
@@ -1118,6 +1231,8 @@ async function saveTariffForm(form) {
         id: element.dataset.zoneId || newZoneId(),
         name: zoneName,
         is_default: isDefault,
+        description: $('[data-zone-description]', element)?.textContent || '',
+        ...(element.dataset.kompasLevel != null ? {kompas_level: Number(element.dataset.kompasLevel)} : {}),
         days: isDefault ? [0, 1, 2, 3, 4, 5, 6] : days,
         intervals: isDefault ? ['00:00-24:00'] : intervals,
         ...(!isDefault && months.length && months.length < 12 ? { months } : {}),
@@ -1151,6 +1266,7 @@ async function saveTariffForm(form) {
       description,
       config: {
         zones,
+        zone_source: state.editingTariff?.config.zone_source || 'schedule',
         fixed_fees: readFees(form, 'fixed-fees', 'net_monthly'),
         variable_fees: readFees(form, 'variable-fees', 'net_per_kwh'),
         capacity_fee: capacityFee,
@@ -1385,6 +1501,7 @@ async function init() {
   normalizeBasePath();
   bindTheme();
   bindEvents();
+  bindSensorEvents();
   setDateRange(addDays(today(), -29), today());
 
   await loadConfig();

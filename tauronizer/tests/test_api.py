@@ -61,7 +61,7 @@ def test_presets_are_seeded(client: TestClient) -> None:
     response = client.get("/api/tariffs")
     assert response.status_code == 200
     tariffs = response.json()["tariffs"]
-    assert {item["preset_id"] for item in tariffs} == {"g11", "g12", "g12w", "g13"}
+    assert {item["preset_id"] for item in tariffs} == {"g11", "g12", "g12w", "g13", "g14dynamic"}
     assert all(item["is_preset"] for item in tariffs)
 
 
@@ -136,10 +136,10 @@ def test_restore_presets(client: TestClient) -> None:
 
     response = client.post("/api/tariffs/restore-presets")
     assert response.status_code == 200
-    assert response.json()["restored"] == 4
+    assert response.json()["restored"] == 5
 
     tariffs = client.get("/api/tariffs").json()["tariffs"]
-    assert len(tariffs) == 4
+    assert len(tariffs) == 5
 
 
 def test_analyze_and_history(client: TestClient) -> None:
@@ -160,7 +160,7 @@ def test_analyze_and_history(client: TestClient) -> None:
     assert result["cheapest_tariff_id"]
     assert result["id"]
     assert result["warnings"] == []
-    assert len(result["tariffs"]) == 4
+    assert len(result["tariffs"]) == 5
 
     history = client.get("/api/analyses").json()["analyses"]
     assert len(history) == 1

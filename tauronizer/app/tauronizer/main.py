@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import asyncio
+from contextlib import suppress
 import json
 import logging
 import os
@@ -22,6 +24,8 @@ from .db import (
     delete_tariff,
     duplicate_tariff,
     get_analysis,
+    get_tariff,
+    set_setting,
     init_db,
     list_analyses,
     list_tariffs,
@@ -31,8 +35,10 @@ from .db import (
     utcnow,
 )
 from .ha_client import HAClient, HAError
-from .models import AnalyzeRequest, TariffCreate, TariffUpdate
-from .tariffs import PRESET_NOTE, TZ, TariffValidationError, compile_zones
+from .models import AnalyzeRequest, TariffCreate, TariffUpdate, SensorSettings
+from .sensors import SensorPublisher
+from .kompas import KompasCache
+from .tariffs import KOMPAS_ZONE_DESCRIPTIONS, PRESET_NOTE, TZ, TariffValidationError, compile_zones
 
 MAX_RANGE_DAYS = 3660
 
@@ -60,8 +66,23 @@ async def lifespan(app: FastAPI):
     init_db()
     app.state.ha = HAClient()
     _LOGGER.info("Tauronizer %s started (supervisor mode: %s)", __version__, app.state.ha.is_supervisor)
-    yield
-    await app.state.ha.close()
+    app.state.sensors = SensorPublisher(app.state.ha)
+    publisher_task = asyncio.create_task(app.state.sensors.run())
+    app.state.kompas = KompasCache(app.state.sensors.wake)
+    kompas_task = asyncio.create_task(app.state.kompas.run()) if os.getenv('KOMPAS_AUTO_SYNC', '1') != '0' else None
+    try:
+        yield
+    finally:
+        if kompas_task:
+            kompas_task.cancel()
+            with suppress(asyncio.CancelledError):
+                await kompas_task
+        await app.state.kompas.close()
+        publisher_task.cancel()
+        with suppress(asyncio.CancelledError):
+            await publisher_task
+        await app.state.sensors.stop()
+        await app.state.ha.close()
 
 
 app = FastAPI(
@@ -146,6 +167,7 @@ async def config(request: Request) -> dict[str, Any]:
         "mode": "supervisor" if ha.is_supervisor else "standalone",
         "max_range_days": MAX_RANGE_DAYS,
         "disclaimer": PRESET_NOTE,
+        "kompas_zone_descriptions": KOMPAS_ZONE_DESCRIPTIONS,
     }
 
 
@@ -172,18 +194,21 @@ async def tariff_create(payload: TariffCreate) -> dict[str, Any]:
 
 
 @app.post("/api/tariffs/restore-presets")
-async def tariff_restore_presets() -> dict[str, int]:
-    return {"restored": restore_presets()}
+async def tariff_restore_presets(request: Request) -> dict[str, int]:
+    count = restore_presets()
+    request.app.state.sensors.wake.set()
+    return {"restored": count}
 
 
 @app.put("/api/tariffs/{tariff_id}")
-async def tariff_update(tariff_id: str, payload: TariffUpdate) -> dict[str, Any]:
+async def tariff_update(tariff_id: str, payload: TariffUpdate, request: Request) -> dict[str, Any]:
     config = _validated_config(payload)
     updated = update_tariff(
         tariff_id, payload.name.strip(), payload.description.strip(), config
     )
     if updated is None:
         raise HTTPException(status_code=404, detail="Nie znaleziono taryfy.")
+    request.app.state.sensors.wake.set()
     return updated
 
 
@@ -196,10 +221,40 @@ async def tariff_duplicate(tariff_id: str) -> dict[str, Any]:
 
 
 @app.delete("/api/tariffs/{tariff_id}")
-async def tariff_delete(tariff_id: str) -> dict[str, bool]:
+async def tariff_delete(tariff_id: str, request: Request) -> dict[str, bool]:
     if not delete_tariff(tariff_id):
         raise HTTPException(status_code=404, detail="Nie znaleziono taryfy.")
+    request.app.state.sensors.wake.set()
     return {"deleted": True}
+
+
+@app.get('/api/kompas')
+async def kompas_status(request: Request) -> dict[str, Any]:
+    return request.app.state.kompas.snapshot()
+
+
+@app.post('/api/kompas/refresh')
+async def kompas_refresh(request: Request) -> dict[str, Any]:
+    request.app.state.kompas.wake.set()
+    return request.app.state.kompas.snapshot()
+
+
+@app.get('/api/sensors')
+async def sensors_status(request: Request) -> dict[str, Any]:
+    return request.app.state.sensors.snapshot()
+
+
+@app.put('/api/sensors')
+async def sensors_settings(payload: SensorSettings, request: Request) -> dict[str, Any]:
+    if payload.tariff_id and get_tariff(payload.tariff_id) is None:
+        raise HTTPException(status_code=404, detail='Nie znaleziono taryfy.')
+    set_setting('sensor_tariff_id', payload.tariff_id or '')
+    if payload.price_mode is not None:
+        set_setting('sensor_price_mode', payload.price_mode)
+    publisher = request.app.state.sensors
+    await publisher.refresh()
+    publisher.wake.set()
+    return publisher.snapshot()
 
 
 # ---------------------------------------------------------------------------

@@ -240,6 +240,7 @@ def test_christmas_eve_is_offpeak(preset_id):
 
 def test_verified_2026_net_prices():
     expected = {
+        "g14dynamic": [(0.497, 0.0224), (0.497, 0.0893), (0.497, 0.3881), (0.497, 2.3756)],
         "g11": [(0.497, 0.2464)],
         "g12": [(0.543, 0.2841), (0.413, 0.0558)],
         "g12w": [(0.622, 0.3298), (0.413, 0.0512)],
@@ -280,3 +281,8 @@ def test_explicit_default_covers_all_days_months_and_holidays() -> None:
                          'exclude_holidays': True, 'energy_net': 0.5, 'distribution_net': 0.1}]}
     zones = compile_zones(config)
     assert zone_for(local(2026, 12, 26, 23), zones, polish_holidays(2026)).id == 'base'
+
+
+def test_current_presets_do_not_charge_discontinued_subscription():
+    for preset in PRESETS:
+        assert all(fee['net_monthly']==0 for fee in preset['config']['fixed_fees'] if 'abonamentowa' in fee['name'])

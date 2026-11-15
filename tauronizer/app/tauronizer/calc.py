@@ -81,10 +81,11 @@ def _cost_for_tariff(
     holidays: set[date],
     total_kwh: float,
     days: int,
+    dynamic_levels: dict[str, int] | None = None,
 ) -> dict[str, Any]:
     totals: dict[str, float] = {zone.id: 0.0 for zone in zones}
     for local_dt, kwh in local_samples:
-        zone = zone_for(local_dt, zones, holidays)
+        zone = zone_for(local_dt, zones, holidays, dynamic_levels)
         totals[zone.id] += kwh
 
     config = tariff["config"]
@@ -190,13 +191,17 @@ def analyze(
         weekday_hour[local_dt.weekday()][local_dt.hour] += kwh
         monthly[local_dt.strftime("%Y-%m")] = monthly.get(local_dt.strftime("%Y-%m"), 0.0) + kwh
 
+    dynamic_levels = None
+    if any(tariff['config'].get('zone_source') == 'pse_kompas' for tariff in tariffs):
+        from .db import kompas_levels
+        dynamic_levels = kompas_levels()
     results: list[dict[str, Any]] = []
     for tariff in tariffs:
         try:
             zones = compile_zones(tariff["config"])
             results.append(
                 _cost_for_tariff(
-                    tariff, zones, local_samples, holidays, total_kwh, days
+                    tariff, zones, local_samples, holidays, total_kwh, days, dynamic_levels
                 )
             )
         except TariffValidationError as exc:

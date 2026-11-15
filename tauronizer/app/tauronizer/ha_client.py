@@ -322,3 +322,17 @@ class HAClient:
 
         samples.sort(key=lambda sample: sample.timestamp)
         return samples, unit
+
+    async def publish_mqtt(self, topic: str, payload: str, *, retain: bool) -> None:
+        """Use HA's configured broker through the documented mqtt.publish action."""
+        if not self.token:
+            raise HAError('Brak połączenia z Home Assistant do publikacji MQTT.')
+        try:
+            response = await self._http.post(
+                f'{self.rest_url}/services/mqtt/publish',
+                json={'topic': topic, 'payload': payload, 'qos': 1, 'retain': retain},
+                timeout=10.0,
+            )
+            response.raise_for_status()
+        except httpx.HTTPError as exc:
+            raise HAError('Nie udało się opublikować MQTT przez Home Assistant.') from exc

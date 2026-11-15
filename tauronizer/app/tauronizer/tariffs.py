@@ -50,6 +50,7 @@ class CompiledZone:
     exclude_holidays: bool
     months: frozenset[int] | None = None
     is_default: bool = False
+    kompas_level: int | None = None
 
     def matches(
         self, month: int, weekday: int, minutes: int, is_holiday: bool
@@ -107,6 +108,7 @@ def compile_zones(config: Mapping[str, Any]) -> list[CompiledZone]:
     if not isinstance(raw_zones, list) or not raw_zones:
         raise TariffValidationError("Taryfa musi zawierać co najmniej jedną strefę.")
 
+    dynamic = config.get('zone_source') == 'pse_kompas'
     zones: list[CompiledZone] = []
     seen_ids: set[str] = set()
 
@@ -172,10 +174,10 @@ def compile_zones(config: Mapping[str, Any]) -> list[CompiledZone]:
                 f"Strefa „{name}”: cena powyżej 10 zł/kWh wygląda na pomyłkę."
             )
 
-        is_default = bool(raw.get("is_default")) or (
+        is_default = not dynamic and (bool(raw.get("is_default")) or (
             days == set(range(7)) and months is None
             and intervals == ((0, 1440),) and not raw.get("exclude_holidays", False)
-        )
+        ))
         if is_default and any(zone.is_default for zone in zones):
             raise TariffValidationError("Taryfa może mieć tylko jedną strefę domyślną (całodobową przez cały rok).")
         if is_default:
@@ -191,10 +193,16 @@ def compile_zones(config: Mapping[str, Any]) -> list[CompiledZone]:
                 distribution_net=distribution,
                 exclude_holidays=False if is_default else bool(raw.get("exclude_holidays", False)),
                 is_default=is_default,
+                kompas_level=raw.get("kompas_level") if dynamic else None,
                 months=months,
             )
         )
 
+    if dynamic:
+        levels = [zone.kompas_level for zone in zones]
+        if len(levels) != 4 or any(type(level) is not int for level in levels) or set(levels) != {0, 1, 2, 3}:
+            raise TariffValidationError('G14dynamic wymaga dokładnie czterech stref Kompasu S1–S4.')
+        return sorted(zones, key=lambda zone: zone.kompas_level)
     zones.sort(key=lambda zone: zone.is_default)
     _validate_coverage(zones)
     return zones
@@ -279,9 +287,19 @@ def zone_for(
     local_dt: datetime,
     zones: Sequence[CompiledZone],
     holidays: set[date],
+    dynamic_levels: Mapping[str, int] | None = None,
 ) -> CompiledZone:
     """Return the first matching zone for a local timestamp."""
 
+    if zones and zones[0].kompas_level is not None:
+        from .kompas import utc_key
+        from .db import kompas_level
+        key = utc_key(local_dt)
+        level = dynamic_levels.get(key) if dynamic_levels is not None else kompas_level(key)
+        for zone in zones:
+            if zone.kompas_level == level:
+                return zone
+        raise TariffValidationError(f'Brak strefy Kompasu PSE dla {local_dt.isoformat()}. Sprawdź import danych w zakładce Taryfy.')
     holiday = local_dt.date() in holidays
     minutes = local_dt.hour * 60 + local_dt.minute
     for zone in zones:
@@ -299,16 +317,17 @@ def zone_for(
 # Verified 2026-11-14 against URE tariff 265/2025 and TAURON distribution tariff.
 # Full sources and assumptions: README.md, section "Stawki Tauron 2026".
 PRESET_NOTE = (
+    "G14dynamic: cennik Prąd ze zmienną dystrybucją, godzinowe strefy Kompasu PSE. "
     "TAURON Sprzedaż 2026 (bez obszaru gliwickiego i ofert rynkowych), "
     "dystrybucja według stawek od 01.02.2026. Wszystkie stawki netto; "
-    "energia bez akcyzy. Domyślnie 3 fazy i abonament w cyklu 1-miesięcznym. "
+    "energia bez akcyzy. Domyślnie 3 fazy i abonament 0 zł (nienaliczany od 01.10.2026). "
     "Opłata mocowa: próg według wpisanego poboru lub szacunku rocznego z analizy. "
     "Porównanie stosuje skonfigurowany cennik do całego zakresu, nie odtwarza faktur historycznych."
 )
 
 _FIXED_FEES = [
     {"name": "Opłata stała sieciowa (3 fazy)", "net_monthly": 10.86},
-    {"name": "Opłata abonamentowa (cykl 1-miesięczny)", "net_monthly": 4.56},
+    {"name": "Opłata abonamentowa (nienaliczana od 01.10.2026)", "net_monthly": 0.0},
     {"name": "Opłata handlowa", "net_monthly": 0.00},
 ]
 
@@ -488,7 +507,31 @@ PRESETS: list[dict[str, Any]] = [
     },
 ]
 
-PRESET_VERSION = 4
+KOMPAS_ZONE_DESCRIPTIONS = {
+    0: 'Najniższa stawka dystrybucji. Dobry moment na przesunięcie pracy urządzeń, np. ładowania auta, grzania wody lub zmywarki.',
+    1: 'Standardowa stawka dystrybucji. Możesz korzystać z energii normalnie; przesunięcie zużycia do S1 może dodatkowo obniżyć koszt.',
+    2: 'Podwyższona stawka dystrybucji. Warto ograniczyć zużycie lub przełożyć pracę urządzeń na tańszą godzinę.',
+    3: 'Najwyższa stawka dystrybucji. Szczególnie warto ograniczyć pobór i przełożyć energochłonne czynności na inną godzinę.',
+}
+
+# Official 2026 rates; the offer's 0.5020 net includes 0.0050 excise.
+_g14 = _config([
+    {**_zone(f's{level+1}', name, days=_ALL_DAYS, intervals=['00:00-24:00'],
+             energy=0.4970, distribution=rate), 'kompas_level': level,
+     'description': KOMPAS_ZONE_DESCRIPTIONS[level]}
+    for level, name, rate in [
+        (0, 'Zalecane użytkowanie (S1)', 0.0224),
+        (1, 'Normalne użytkowanie (S2)', 0.0893),
+        (2, 'Zalecane oszczędzanie (S3)', 0.3881),
+        (3, 'Wymagane ograniczenie (S4)', 2.3756),
+    ]
+])
+_g14['zone_source'] = 'pse_kompas'
+_g14['fixed_fees'] = [fee for fee in _g14['fixed_fees'] if 'abonamentowa' not in fee['name']]
+PRESETS.append({'id': 'g14dynamic', 'name': 'Tauron G14dynamic',
+    'description': 'Cztery strefy dystrybucji według godzinowych wskazań Kompasu PSE. Cena energii stała według cennika Prąd ze zmienną dystrybucją 2026; porównanie wymaga danych Kompasu w lokalnej bazie.',
+    'config': _g14})
+PRESET_VERSION = 6
 
 
 def preset_by_id(preset_id: str) -> dict[str, Any] | None:

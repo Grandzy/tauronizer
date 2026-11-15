@@ -1,5 +1,18 @@
 # Historia zmian
 
+## 0.4.0 — 15.11.2026
+
+- Nowa zakładka **Sensory** z trwałym wyborem obecnej taryfy.
+- **`sensor.tauronizer_strefa`** publikuje dokładną nazwę aktualnej strefy.
+- **`sensor.tauronizer_cena_kwh`** publikuje pełną cenę zmienną za kWh: energia, dystrybucja, wszystkie opłaty zmienne i akcyza; opcjonalnie VAT. Wybór **netto/brutto** jest zapamiętywany.
+- Preset **G14dynamic** z czterema stawkami dystrybucji według Kompasu PSE i stałą ceną energii z cennika TAURON 2026.
+- Opisy S1–S4 w definicjach stref, rozwijana legenda na karcie taryfy i objaśnienia w edytorze.
+- Pełny import publicznej historii Kompasu do SQLite, zapis postępu i wznowienie po restarcie. Następnie aktualizacje przyrostowe co 15 minut, z obsługą korekt i luk.
+- Analizy i sensory korzystają z lokalnej bazy, z rozróżnieniem powtarzających się godzin przy zmianie czasu. Brak danych jest sygnalizowany; nie zastępujemy go najtańszą strefą.
+- Status archiwum i przycisk **Uzupełnij dane** w zakładce Taryfy.
+- Aktualne presety mają abonament 0 zł, zgodnie z zaprzestaniem naliczania od 1.10.2026. Własne taryfy i edytowane presety są zachowywane.
+
+
 ## 0.3.1 — 14.11.2026
 
 - Dodano oznaczenie „Pozostałe godziny — strefa domyślna” i checkbox w edytorze.

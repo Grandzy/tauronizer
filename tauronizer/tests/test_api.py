@@ -159,7 +159,9 @@ def test_analyze_and_history(client: TestClient) -> None:
     assert result["entity_name"] == "Energia domu"
     assert result["cheapest_tariff_id"]
     assert result["id"]
-    assert result["warnings"] == []
+    assert result["data_quality"]["received_hours"] == 3
+    assert result["data_quality"]["missing_hours"] == 21
+    assert any("Koszty mogą być zaniżone" in warning for warning in result["warnings"])
     assert len(result["tariffs"]) == 5
 
     history = client.get("/api/analyses").json()["analyses"]
@@ -170,6 +172,7 @@ def test_analyze_and_history(client: TestClient) -> None:
     detail = client.get(f"/api/analyses/{result['id']}")
     assert detail.status_code == 200
     assert detail.json()["result"]["total_kwh"] == 8.0
+    assert detail.json()["result"]["data_quality"] == result["data_quality"]
 
     assert client.delete(f"/api/analyses/{result['id']}").status_code == 200
     assert client.get("/api/analyses").json()["analyses"] == []
@@ -317,3 +320,47 @@ def test_monthly_comparison_uses_sensor_tariff_and_preserves_history_snapshot(cl
     stored = client.get(f"/api/analyses/{result['id']}").json()['result']
     assert stored['monthly_costs'] == result['monthly_costs']
     assert stored['current_tariff_id'] == current['id']
+
+
+def test_analysis_reports_full_coverage_without_warning(client):
+    from datetime import timedelta
+    start = datetime(2026,1,9,tzinfo=TZ).astimezone(timezone.utc)
+    client.app.state.ha = FakeHA([ConsumptionSample(start+timedelta(hours=i),0) for i in range(24)])
+    result = client.post('/api/analyze',json={'entity_id':'sensor.energia_dom','start':'2026-01-09','end':'2026-01-09','tariff_ids':['preset_g11']}).json()
+    assert result['data_quality']['percent']==100
+    assert result['data_quality']['missing_hours']==0
+    assert result['warnings']==[]
+
+
+def test_schedule_endpoint_previews_dynamic_tariff_when_current_is_static(client,monkeypatch):
+    from tauronizer.db import set_setting, save_kompas
+    from tauronizer.forecast import dynamic_schedule
+    import tauronizer.main as main
+    now=datetime(2026,1,9,17,30,tzinfo=TZ)
+    for hour,level in [(17,0),(18,2)]:
+        stamp=datetime(2026,1,9,hour,tzinfo=TZ).astimezone(timezone.utc)
+        save_kompas([{'utc_hour':stamp.isoformat(),'business_date':'2026-01-09','level':level,'publication_utc':stamp.isoformat()}])
+    monkeypatch.setattr(main,'dynamic_schedule',lambda t:dynamic_schedule(t,now))
+    set_setting('sensor_tariff_id','preset_g11')
+    response=client.get('/api/kompas/schedule')
+    assert response.status_code==200
+    result=response.json()
+    assert result['tariff_id']=='preset_g14dynamic'
+    assert result['is_current_tariff'] is False
+    assert result['next_change']['level']==2
+    set_setting('sensor_tariff_id','preset_g14dynamic')
+    assert client.get('/api/kompas/schedule').json()['is_current_tariff'] is True
+
+
+def test_analysis_deduplicates_hours_and_preserves_raw_quality(client):
+    stamp=datetime(2026,1,9,10,tzinfo=TZ).astimezone(timezone.utc)
+    client.app.state.ha=FakeHA([ConsumptionSample(stamp,1),ConsumptionSample(stamp,2),
+                              ConsumptionSample(stamp.replace(hour=11),float('nan')),
+                              ConsumptionSample(stamp.replace(hour=12),-1)])
+    result=client.post('/api/analyze',json={'entity_id':'sensor.energia_dom','start':'2026-01-09','end':'2026-01-09','tariff_ids':['preset_g11']}).json()
+    assert result['total_kwh']==2
+    assert result['data_quality']['received_hours']==1
+    assert result['data_quality']['invalid_samples']==2
+    assert result['data_quality']['duplicate_samples']==1
+    assert result['data_quality']['missing_hours']==23
+    assert any('ostatni prawidłowy' in warning for warning in result['warnings'])

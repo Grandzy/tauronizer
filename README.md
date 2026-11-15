@@ -24,15 +24,15 @@ profilu zużycia — w wybranym okresie i w przeliczeniu na rok.
 
 Zrzut przedstawia dane demonstracyjne, a nie rzeczywiste zużycie użytkownika.
 
-## Nowości w 0.4.1
+## Nowości w 0.4.5
 
-- Heatmapa zużycia według **miesięcy i dni tygodnia**, poniżej profilu godzinowego.
-- Pod zużyciem miesięcznym: **dwa słupki kosztów brutto** dla każdego miesiąca — obecna taryfa z Sensorów i taryfa najtańsza w całym analizowanym okresie.
-- Ta sama proponowana taryfa dla wszystkich miesięcy; obie nazwy w legendzie.
-- Uwzględnienie częściowych miesięcy, opłat stałych i wspólnego progu mocowej z całej analizy.
-- Nowe wykresy zapisują się w Historii. Starsze analizy trzeba wykonać ponownie.
+- Raport kompletności godzin zużycia: procent dostępnych danych, podział na miesiące i lista luk; ostrzeżenia przy niepełnych miesiącach.
+- Harmonogram G14dynamic na dziś i jutro oraz sensor czasu następnej potwierdzonej zmiany strefy.
+- Sensory diagnostyki API Kompasu PSE: ostatnia aktualizacja danych i status połączenia.
+- Wykres pączkowy składników potencjalnej faktury w szczegółach każdej taryfy, z osobnymi opłatami, kwotami i udziałami procentowymi.
+- Węższe słupki kosztów miesięcznych i podpowiedzi z wartościami zużycia.
 
-[Opis wydania 0.4.1](https://github.com/direk/tauronizer/releases/tag/v0.4.1)
+[Opis wydania 0.4.5](https://github.com/direk/tauronizer/releases/tag/v0.4.5)
 · [Historia zmian](tauronizer/CHANGELOG.md)
 
 ## Sensory — aktualna strefa przez MQTT
@@ -62,11 +62,43 @@ Discovery ma temat `homeassistant/sensor/tauronizer/strefa/config`, a stan
 `tauronizer/strefa/state`. Tylko konfiguracja discovery jest zachowywana przez
 broker (retain); stara strefa nie jest odtwarzana po restarcie.
 
-Opcja **Nie publikuj sensorów** wyłącza publikację i usuwa konfigurację discovery.
+Opcja **Nie publikuj strefy i ceny** wyłącza te dwie encje i usuwa ich konfigurację discovery.
+Diagnostyka API pozostaje aktywna niezależnie od wyboru taryfy.
 Usunięcie wybranej taryfy także wycofuje encję, dopóki nie wybierzesz innej taryfy.
 Błąd MQTT nie kasuje wyboru — status w zakładce pokaże problem, a dodatek ponowi próbę.
 Własne zmiany nazw stref od razu wpływają na stan encji, dlatego uwzględnij je
 w automatyzacjach.
+
+### Kompletność analizy i harmonogram G14dynamic
+
+Analiza pokazuje procent dostępnych zakończonych godzin, podsumowanie miesięcy
+oraz listę braków. Niepełne miesiące mają oznaczenie ⚠ na wykresach. Uwzględniona
+jest zmiana czasu, a godziny trwające i przyszłe nie są brakami. Brakującego
+zużycia nie uzupełniamy szacunkiem; koszty i ranking mogą być mniej miarodajne.
+Raport zapisuje się w Historii; starsze analizy należy wykonać ponownie.
+
+W **Sensorach** dostępny jest harmonogram stref G14dynamic na dziś i jutro,
+z nazwami, zmiennymi cenami brutto oraz oznaczeniem nieopublikowanych godzin.
+Dla obecnej taryfy G14dynamic sensor `sensor.tauronizer_nastepna_zmiana_strefy`
+publikuje czas następnej potwierdzonej zmiany i atrybut `next_zone` z nazwą
+przyszłej strefy. Luka przed zmianą oznacza niedostępny sensor. Podgląd korzysta
+wyłącznie z lokalnej bazy PSE i nie przewiduje nieopublikowanych stref.
+
+### Diagnostyka API G14dynamic
+
+Automatycznie publikowane są także:
+
+- `sensor.tauronizer_api_ostatnia_aktualizacja` — data i godzina ostatniego
+  poprawnego pobrania i zapisu danych Kompasu do lokalnej bazy; pozostaje zachowana po błędzie i restarcie.
+- `binary_sensor.tauronizer_api_polaczenie` — wynik ostatniego zapytania do API
+  Kompasu PSE: true/false (w HA `on`/`off`). Przed pierwszym sprawdzeniem po restarcie
+  jest niedostępny; po 30 minutach bez sprawdzenia przyjmuje false.
+
+Dla G14dynamic źródłem jest **PSE, nie TAURON API**. Status nie oznacza kompletności
+historii ani dostępności MQTT. Diagnostyka jest widoczna w Sensorach i publikuje się
+nawet bez wybranej taryfy, co 30 sekund. Po 90 sekundach bez publikacji encje są
+niedostępne. Sprawdzanie API odbywa się podczas synchronizacji (zwykle co 15 minut,
+po błędzie co minutę). Szczegóły: [dokumentacja](tauronizer/DOCS.md#diagnostyka-api-taryfy-dynamicznej).
 
 ### Sensor aktualnej ceny kWh
 
@@ -177,7 +209,7 @@ Kroki ręczne:
 Dodatek buduje obraz lokalnie na urządzeniu (nie wymaga gotowego obrazu w
 rejestrze). Obsługiwane architektury: `amd64` i `aarch64`.
 
-### Aktualizacja do 0.4.1
+### Aktualizacja do 0.4.5
 
 1. W sklepie dodatków odśwież repozytorium i otwórz **Tauronizer**.
 2. Wykonaj kopię zapasową dodatku, a następnie wybierz **Aktualizuj**.

@@ -245,3 +245,103 @@ Proponowana taryfa musi mieć dane dla całej analizy. Braki danych obecnej tary
 są oznaczane w odpowiednich miesiącach; przyczyny można rozwinąć pod wykresem. Miesiąc bez statystyk zużycia nie ma
 wyliczonego kosztu. Nowe wyniki zapisują wykresy i wybraną taryfę w historii.
 Starsze analizy wymagają ponownego wykonania, żeby otrzymać nowe wykresy.
+
+
+## Diagnostyka API taryfy dynamicznej
+
+G14dynamic pobiera strefy z API **Kompasu PSE**, a nie z API TAURONA.
+Dodatek automatycznie publikuje przez MQTT Discovery dwie encje diagnostyczne:
+
+- `sensor.tauronizer_api_ostatnia_aktualizacja` — data i godzina ostatniego
+  poprawnego pobrania oraz zapisu niepustej strony danych do lokalnej bazy.
+  Obejmuje także import historii i ponowne pobranie tych samych danych.
+  To czas pobrania, nie data obowiązywania ani publikacji stref przez PSE.
+  Pusta odpowiedź i błąd nie zmieniają tej wartości. Data jest zapisywana
+  atomowo z danymi, zachowana po restarcie i prezentowana przez HA w lokalnym czasie.
+- `binary_sensor.tauronizer_api_polaczenie` — wynik ostatniego zapytania:
+  true po poprawnej odpowiedzi o oczekiwanej strukturze (również pustej),
+  false po błędzie HTTP, sieci lub nieprawidłowej odpowiedzi. Po 30 minutach
+  bez sprawdzenia przyjmuje false. Przed pierwszym sprawdzeniem po restarcie
+  pozostaje niedostępny. W HA odpowiada to stanom `on`/`off` i klasie connectivity.
+
+Sprawdzanie odbywa się podczas synchronizacji: zwykle co 15 minut, po błędzie
+co minutę, a podczas importu po każdej odpowiedzi. Nie jest to ciągły test sieci
+ani potwierdzenie kompletności archiwum. Błędy MQTT są raportowane oddzielnie;
+nie zmieniają wyniku sprawdzenia API.
+
+Diagnostyka działa również przy wyłączonej publikacji strefy i ceny lub braku
+aktualnych danych G14dynamic. Korzysta z tego samego urządzenia Tauronizer,
+ale ma osobne tematy dostępności. Publikacja jest ponawiana co 30 sekund,
+bez zatrzymywania ostatniego stanu przez broker; konfiguracja Discovery jest
+zatrzymywana. Po 90 sekundach bez publikacji obie encje stają się niedostępne,
+a przy poprawnym zamknięciu dodatku są od razu oznaczane jako niedostępne.
+Stan i czas ostatniego sprawdzenia można odczytać także w zakładce Sensory.
+
+
+## Kompletność danych zużycia
+
+Analiza pokazuje procent zakończonych godzin z poprawnymi statystykami, podział
+na miesiące oraz brakujące przedziały. Przedziały mają wyłączoną godzinę końcową.
+Miesiące niepełne z powodu wybranego zakresu są oznaczone jako fragment miesiąca;
+kompletność dotyczy tylko dni objętych analizą. Braki mają także oznaczenia ⚠
+przy miesiącach na wykresach. Raport jest zapisywany wraz z analizą w Historii.
+
+Godziny są liczone w UTC, a prezentowane w Europe/Warsaw, więc dni zmiany czasu
+mają odpowiednio 23 lub 25 godzin. Zerowe zużycie jest poprawnym odczytem.
+Trwająca godzina i późniejsze godziny dzisiejszego dnia nie są brakami.
+Pominięte ujemne, niefinitywne lub niegodzinowe odczyty nie potwierdzają kompletności.
+Powtórzone godziny liczą się raz; do kosztów API używa ostatniego poprawnego odczytu.
+Raport sprawdza obecność godzinowych statystyk, nie dokładność samego licznika.
+
+Brakujące zużycie nie jest szacowane. Może zaniżyć koszty i zmienić ranking taryf,
+a estymacja roczna i próg mocowej również mogą być mniej miarodajne. Opłaty stałe
+nadal dotyczą całego wybranego zakresu. Dla dużej liczby luk wyświetlane jest
+pierwsze 200 przedziałów, a podsumowania obejmują wszystkie braki.
+Starsze zapisane analizy wymagają ponownego wykonania, aby zawierały ten raport.
+
+## Harmonogram G14dynamic i następna zmiana strefy
+
+W Sensorach znajduje się harmonogram opublikowanych stref na dziś i jutro,
+odczytywany wyłącznie z lokalnej bazy Kompasu PSE. Kolejne godziny tej samej strefy
+są łączone w przedziały. Widać nazwy stref, pełne ceny zmienne brutto (jak sensor
+ceny za kWh, bez opłat miesięcznych) i braki danych. Zmiana czasu jest uwzględniona,
+a oznaczenia CET/CEST rozróżniają powtarzające się godziny.
+
+Podgląd korzysta z wybranej obecnej taryfy G14dynamic; jeśli obecna taryfa jest
+inna, pokazuje pierwszą dostępną definicję G14dynamic jako podgląd.
+Brak jutra może oznaczać brak publikacji lub nieukończony import. API PSE może
+korygować dane; harmonogram i sensor są odświeżane po aktualizacji lokalnej bazy.
+
+`sensor.tauronizer_nastepna_zmiana_strefy` działa dla obecnej taryfy G14dynamic
+wybranej w Sensorach. Ma klasę timestamp i stan będący czasem następnej zmiany
+poziomu S1–S4 w opublikowanym harmonogramie dziś/jutro. Atrybuty: `tariff_id`,
+`tariff_name`, `next_zone`, `next_zone_id`, `next_level` (0–3) i `next_price_gross`.
+Jest publikowany przez MQTT Discovery na urządzeniu Tauronizer, niezależnie od
+trybu netto/brutto sensora ceny (atrybut ceny przyszłej jest zawsze brutto).
+
+Do potwierdzenia następnej zmiany wymagane są ciągłe dane od aktualnej godziny
+po granicę zmiany. Brak aktualnej godziny, luka przed zmianą, brak opublikowanej
+kolejnej zmiany lub wybranie innej taryfy oznacza niedostępny sensor, a nie
+wymyśloną datę. Stan nie jest zatrzymywany przez broker. Publikacja jest ponawiana
+co 30 sekund, na granicach godzin i po aktualizacji danych. Encja ma osobny temat
+dostępności i staje się niedostępna po 90 sekundach bez publikacji.
+
+
+## Wykres struktury faktury
+
+Po rozwinięciu taryfy w **Analiza → Szczegóły rachunku** widoczny jest wykres
+pączkowy. Środek przedstawia sumę brutto, a legenda kwoty i udziały poszczególnych
+składników: energii, dystrybucji, każdej opłaty zmiennej i stałej z konfiguracji,
+akcyzy, opłaty mocowej oraz VAT. Podsumowanie netto i razem brutto nie są osobnymi
+wycinkami, dzięki czemu kwoty nie są liczone podwójnie. Najechanie na wycinek
+pokazuje nazwę, kwotę i udział; wszystkie wartości są także w legendzie.
+
+Opłaty zerowe są widoczne w legendzie, ale nie tworzą wycinków. Przy zerowej
+fakturze pozostaje pusty pierścień i informacja o braku kosztów. Kwoty w legendzie
+są zaokrąglane do groszy; udziały wynikają z sumy pozycji przed zaokrągleniem
+wyświetlanych kwot, więc możliwe są groszowe różnice względem sumy brutto.
+Wykres korzysta z tych samych danych i założeń co reszta analizy.
+
+Nowe wyniki zapisują osobne pozycje faktury w Historii. Starsze wyniki także
+pokazują wykres, ale z opłatami zmiennymi i stałymi w grupach; ponowne wykonanie
+analizy pozwala zobaczyć szczegółowe pozycje bez zgadywania dawnych stawek.

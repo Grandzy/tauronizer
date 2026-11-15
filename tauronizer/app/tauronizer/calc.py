@@ -7,6 +7,8 @@ from dataclasses import dataclass
 from datetime import date, datetime, timedelta
 from typing import Any, Sequence
 
+from .quality import consumption_coverage
+
 from .tariffs import (
     CompiledZone,
     TZ,
@@ -123,6 +125,20 @@ def _cost_for_tariff(
     annual_net = annual_variable + (fixed_monthly + capacity_monthly) * 12
     annual_pln = annual_net * (1 + vat_rate)
 
+    invoice_items = [
+        {'id': 'energy', 'name': 'Energia czynna netto (bez akcyzy)', 'amount_pln': _round(energy_pln, 6)},
+        {'id': 'distribution', 'name': 'Dystrybucja netto', 'amount_pln': _round(distribution_pln, 6)},
+        *[{'id': f'variable_{index}', 'name': f"{fee.get('name') or 'Opłata zmienna'} — netto",
+           'amount_pln': _round(total_kwh * float(fee.get('net_per_kwh', 0) or 0), 6)}
+          for index, fee in enumerate(variable_fees)],
+        {'id': 'excise', 'name': 'Akcyza', 'amount_pln': _round(excise_pln, 6)},
+        *[{'id': f'fixed_{index}', 'name': f"{fee.get('name') or 'Opłata stała'} — netto",
+           'amount_pln': _round(months * float(fee.get('net_monthly', 0) or 0), 6)}
+          for index, fee in enumerate(fixed_fees)],
+        {'id': 'capacity', 'name': 'Opłata mocowa netto', 'amount_pln': _round(capacity_pln, 6)},
+        {'id': 'vat', 'name': 'VAT', 'amount_pln': vat_pln},
+    ]
+
     zone_rows = []
     for zone in zones:
         kwh = totals[zone.id]
@@ -149,6 +165,7 @@ def _cost_for_tariff(
         "rank": None,
         "capacity_fee": capacity,
         "breakdown": {
+            "invoice_items": invoice_items,
             "energy_pln": _round(energy_pln),
             "distribution_pln": _round(distribution_pln),
             "variable_fees_pln": _round(variable_fees_pln),
@@ -292,6 +309,7 @@ def analyze(
         "days": days,
         "total_kwh": _round(total_kwh, 3),
         "sample_count": len(samples),
+        "data_quality": consumption_coverage(samples, start_date, end_date),
         "tariffs": valid + invalid,
         "cheapest_tariff_id": valid[0]["tariff_id"] if valid else None,
         "cheapest_tariff_name": valid[0]["name"] if valid else None,

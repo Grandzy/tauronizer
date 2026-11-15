@@ -6,6 +6,7 @@ import asyncio
 from contextlib import suppress
 import json
 import logging
+import math
 import os
 from contextlib import asynccontextmanager
 from datetime import date, datetime, time, timedelta, timezone
@@ -18,6 +19,8 @@ from fastapi.staticfiles import StaticFiles
 
 from . import APP_NAME, __version__
 from .calc import ConsumptionSample, analyze
+from .quality import consumption_coverage
+from .forecast import dynamic_schedule
 from .db import (
     create_tariff,
     delete_analysis,
@@ -68,8 +71,9 @@ async def lifespan(app: FastAPI):
     app.state.ha = HAClient()
     _LOGGER.info("Tauronizer %s started (supervisor mode: %s)", __version__, app.state.ha.is_supervisor)
     app.state.sensors = SensorPublisher(app.state.ha)
-    publisher_task = asyncio.create_task(app.state.sensors.run())
     app.state.kompas = KompasCache(app.state.sensors.wake)
+    app.state.sensors.kompas = app.state.kompas
+    publisher_task = asyncio.create_task(app.state.sensors.run())
     kompas_task = asyncio.create_task(app.state.kompas.run()) if os.getenv('KOMPAS_AUTO_SYNC', '1') != '0' else None
     try:
         yield
@@ -263,6 +267,17 @@ async def sensors_settings(payload: SensorSettings, request: Request) -> dict[st
 # ---------------------------------------------------------------------------
 
 
+@app.get('/api/kompas/schedule')
+async def kompas_schedule():
+    selected = get_setting('sensor_tariff_id')
+    current = get_tariff(selected) if selected else None
+    tariff = current if current and current['config'].get('zone_source') == 'pse_kompas' else next(
+        (t for t in list_tariffs() if t['config'].get('zone_source') == 'pse_kompas'), None)
+    result = dynamic_schedule(tariff)
+    result['is_current_tariff'] = bool(current and tariff and current['id'] == tariff['id'])
+    return result
+
+
 @app.post("/api/analyze")
 async def run_analysis(payload: AnalyzeRequest, request: Request) -> dict[str, Any]:
     as_of = datetime.now(TZ).date()
@@ -311,10 +326,15 @@ async def run_analysis(payload: AnalyzeRequest, request: Request) -> dict[str, A
         warnings.append(
             f"Pominięto {negative_count} ujemnych przyrostów (np. reset licznika)."
         )
-    clean_samples = [
-        ConsumptionSample(timestamp=sample.timestamp, kwh=max(sample.kwh, 0.0))
-        for sample in in_range
-    ]
+    clean_by_hour = {}
+    for sample in in_range:
+        stamp = sample.timestamp.astimezone(timezone.utc)
+        if (math.isfinite(sample.kwh) and sample.kwh >= 0
+                and not (stamp.minute or stamp.second or stamp.microsecond)):
+            clean_by_hour[stamp] = ConsumptionSample(timestamp=stamp, kwh=sample.kwh)
+    clean_samples = sorted(clean_by_hour.values(), key=lambda sample: sample.timestamp)
+    if not clean_samples:
+        raise HTTPException(status_code=400, detail='Brak prawidłowych godzinowych statystyk zużycia w wybranym zakresie.')
 
     first = clean_samples[0].timestamp
     last = clean_samples[-1].timestamp
@@ -350,6 +370,15 @@ async def run_analysis(payload: AnalyzeRequest, request: Request) -> dict[str, A
     current_tariff_id = get_setting("sensor_tariff_id")
     current_tariff = next((t for t in all_tariffs if t["id"] == current_tariff_id), None)
     result = analyze(selected, clean_samples, payload.start, payload.end, current_tariff=current_tariff)
+    quality = consumption_coverage(in_range, payload.start, payload.end)
+    result['data_quality'] = quality
+    if quality['missing_hours']:
+        warnings.append(f"Dostępne {str(quality['percent']).replace('.', ',')}% zakończonych godzin: {quality['received_hours']} z {quality['expected_hours']}. "
+                        f"Brakuje {quality['missing_hours']} godzin. Koszty mogą być zaniżone, a najtańsza taryfa może się zmienić po uzupełnieniu danych.")
+    if quality['invalid_samples']:
+        warnings.append(f"Pominięto {quality['invalid_samples']} nieprawidłowych odczytów; nie potwierdzają one kompletności danych.")
+    if quality['duplicate_samples']:
+        warnings.append('Statystyki zawierają powtórzone godziny; uwzględniono ostatni prawidłowy odczyt dla każdej godziny.')
     result.update(
         {
             "entity_id": payload.entity_id,

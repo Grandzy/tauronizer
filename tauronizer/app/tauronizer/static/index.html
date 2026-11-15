@@ -18,8 +18,8 @@
       }
     })();
   </script>
-  <link rel="stylesheet" href="static/styles.css?v=0.4.1">
-  <script defer src="static/app.js?v=0.4.1"></script>
+  <link rel="stylesheet" href="static/styles.css?v=0.4.5">
+  <script defer src="static/app.js?v=0.4.5"></script>
 </head>
 <body>
   <header class="topbar">
@@ -178,10 +178,10 @@
 
     <section id="tab-sensors" class="tab-panel" hidden>
       <div class="section-head"><div><h2>Sensory</h2>
-        <p class="muted">Twoja obecna taryfa, aktualna strefa i cena energii w Home Assistant.</p></div></div>
+        <p class="muted">Twoja taryfa, aktualna strefa, cena energii i diagnostyka API w Home Assistant.</p></div></div>
       <form id="sensor-settings" class="card analysis-form">
         <label class="field" for="sensor-tariff"><span class="field-label">Moja obecna taryfa</span>
-          <select class="input" id="sensor-tariff"><option value="">Nie publikuj sensorów</option></select>
+          <select class="input" id="sensor-tariff"><option value="">Nie publikuj strefy i ceny</option></select>
           <span class="field-hint">Wybierz jedną z taryf z zakładki „Taryfy”. Wybór zostanie zachowany po restarcie dodatku.</span>
         </label>
         <label class="field" for="sensor-price-mode"><span class="field-label">Cena kWh publikowana jako</span>
@@ -215,6 +215,41 @@
           naliczane od kWh (np. jakościową, OZE i kogeneracyjną). Wariant brutto dodatkowo zawiera VAT według wybranej taryfy.</p>
         <p class="muted small">Nie obejmuje opłat miesięcznych ani miesięcznej opłaty mocowej.
           Oba sensory korzystają z tej samej taryfy, statusu publikacji i czasu aktualizacji widocznego powyżej.</p>
+      </article>
+      <article class="card analysis-form sensor-card">
+        <h3>Następna zmiana strefy G14dynamic</h3>
+        <p><code>sensor.tauronizer_nastepna_zmiana_strefy</code></p>
+        <dl class="sensor-values"><dt>Następna opublikowana zmiana</dt><dd id="sensor-next-change">—</dd>
+          <dt>Publikacja MQTT</dt><dd id="sensor-next-mqtt">—</dd></dl>
+        <p class="muted small">Sensor działa dla obecnej taryfy G14dynamic wybranej w Sensorach. Publikuje czas zmiany
+          oraz nazwę następnej strefy w atrybucie next_zone. Zmiana po luce w danych nie jest zgadywana;
+          bez potwierdzonego czasu sensor pozostaje niedostępny. Harmonogram korzysta wyłącznie z lokalnej bazy Kompasu PSE.</p>
+      </article>
+      <article class="card analysis-form sensor-card">
+        <h3>Strefy G14dynamic — dziś i jutro</h3>
+        <p class="muted small">Godziny według Europe/Warsaw. Ceny obejmują wszystkie składniki zmienne i VAT, bez opłat miesięcznych.
+          Brakujące godziny czekają na publikację lub import. PSE może korygować harmonogram.</p>
+        <div id="dynamic-schedule">Ładowanie harmonogramu…</div>
+      </article>
+      <article class="card analysis-form sensor-card">
+        <h3>Diagnostyka API taryfy dynamicznej</h3>
+        <p><code>sensor.tauronizer_api_ostatnia_aktualizacja</code></p>
+        <p><code>binary_sensor.tauronizer_api_polaczenie</code></p>
+        <dl class="sensor-values">
+          <dt>Ostatnie pobranie i zapis danych</dt><dd id="sensor-api-update">—</dd>
+          <dt>Połączenie z API</dt><dd id="sensor-api-connected">—</dd>
+          <dt>Ostatnie sprawdzenie API</dt><dd id="sensor-api-checked">—</dd>
+          <dt>Publikacja diagnostyki MQTT</dt><dd id="sensor-api-mqtt">—</dd>
+        </dl>
+        <p class="muted small">G14dynamic korzysta z API Kompasu PSE. Data aktualizacji oznacza ostatnie
+          poprawne pobranie i zapis danych do bazy (także podczas importu historii). Błąd nie kasuje tej daty.
+          Status połączenia jest wynikiem ostatniego zapytania: true po poprawnej odpowiedzi, false po błędzie
+          lub gdy sprawdzenie ma ponad 30 minut. Nie oznacza kompletności archiwum.</p>
+        <p class="muted small">API jest sprawdzane podczas synchronizacji co 15 minut, a po błędzie co minutę.
+          Przed pierwszym sprawdzeniem status jest niedostępny. Diagnostyka publikuje się automatycznie przez MQTT
+          niezależnie od wybranej taryfy. Po restarcie data jest zachowana; połączenie wymaga nowego sprawdzenia.
+          Po 90 sekundach bez publikacji encje stają się niedostępne. Home Assistant prezentuje sensor binarny
+          jako połączono/rozłączono (w automatyzacjach: on/off).</p>
       </article>
     </section>
 

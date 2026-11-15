@@ -470,3 +470,10 @@ def kompas_gaps() -> list[dict[str, Any]]:
             result.append({'day':day.isoformat(),'missing_hours':missing})
         day += timedelta(days=1)
     return result
+
+
+def kompas_levels_between(start_utc: str, end_utc: str) -> dict[str, int]:
+    with _connect() as connection:
+        return {row['utc_hour']: row['level'] for row in connection.execute(
+            'SELECT utc_hour,level FROM kompas_hours WHERE utc_hour>=? AND utc_hour<? ORDER BY utc_hour',
+            (start_utc, end_utc))}

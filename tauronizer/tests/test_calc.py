@@ -311,3 +311,41 @@ def test_sixteen_month_chart_keeps_same_analysis_winner_even_when_monthly_winner
     assert result['monthly_costs'][-1]['current']['total_pln'] < result['monthly_costs'][-1]['recommended']['total_pln']
     winner = result['tariffs'][0]
     assert sum(row['recommended']['total_pln'] for row in result['monthly_costs']) == pytest.approx(winner['total_pln'], abs=.16)
+
+
+def test_invoice_items_include_each_fee_excise_and_vat_without_subtotals():
+    item = simple_monthly_tariff('invoice', .5, 10)
+    item['config']['variable_fees'] = [
+        {'name': 'OZE', 'net_per_kwh': .01},
+        {'name': 'Kogeneracyjna', 'net_per_kwh': .02},
+        {'name': 'Własna opłata', 'net_per_kwh': .03},
+    ]
+    item['config']['fixed_fees'].append({'name': 'Abonament', 'net_monthly': 0})
+    item['config']['capacity_fee'] = {'annual_kwh': 1000, 'net_monthly_rates': [1, 2, 3, 4]}
+    result = analyze([item], [sample(datetime(2026,1,5,10,tzinfo=TZ), 100)], date(2026,1,1), date(2026,1,31))
+    bill = result['tariffs'][0]['breakdown']
+    parts = {row['id']: row for row in bill['invoice_items']}
+    assert parts['energy']['amount_pln'] == 50
+    assert parts['distribution']['amount_pln'] == 20
+    assert parts['variable_0'] == {'id': 'variable_0', 'name': 'OZE — netto', 'amount_pln': 1}
+    assert parts['variable_1']['amount_pln'] == 2
+    assert parts['variable_2']['amount_pln'] == 3
+    assert parts['excise']['amount_pln'] == .5
+    assert parts['fixed_0']['amount_pln'] == pytest.approx(10 * 31 * 12 / 365.25, abs=.000001)
+    assert parts['fixed_1']['amount_pln'] == 0
+    assert parts['capacity']['amount_pln'] == pytest.approx(2 * 31 * 12 / 365.25, abs=.000001)
+    assert parts['vat']['amount_pln'] == bill['vat_pln']
+    assert set(parts) == {'energy', 'distribution', 'variable_0', 'variable_1', 'variable_2', 'excise', 'fixed_0', 'fixed_1', 'capacity', 'vat'}
+    assert sum(row['amount_pln'] for row in parts.values()) == pytest.approx(bill['total_pln'], abs=.005)
+
+
+def test_invoice_items_support_zero_bill_and_duplicate_fee_names():
+    item = simple_monthly_tariff('zero', 0)
+    item['config']['zones'][0]['distribution_net'] = 0
+    item['config']['excise_net_per_kwh'] = 0
+    item['config']['variable_fees'] = [{'name': 'Dodatek', 'net_per_kwh': 0}, {'name': 'Dodatek', 'net_per_kwh': 0}]
+    result = analyze([item], [], date(2026,1,1), date(2026,1,1))
+    bill = result['tariffs'][0]['breakdown']
+    assert bill['total_pln'] == 0
+    assert all(row['amount_pln'] == 0 for row in bill['invoice_items'])
+    assert len({row['id'] for row in bill['invoice_items']}) == len(bill['invoice_items'])

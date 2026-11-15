@@ -159,3 +159,89 @@ def test_holiday_does_not_override_kompas_level(database):
     db.save_kompas(parse_rows({'value':[raw('2026-01-06 16:00',3,'2026-01-06')]}))
     zones=compile_zones(g14()['config'])
     assert zone_for(datetime(2026,1,6,17,tzinfo=TZ),zones,polish_holidays(2026)).kompas_level==3
+
+
+def test_api_health_and_last_update_survive_failure_and_restart(database):
+    async def scenario():
+        notified = asyncio.Event()
+        cache = KompasCache(notified)
+        await cache.http.aclose()
+        assert cache.api_status()['connected'] is None
+        assert cache.api_status()['last_update'] is None
+        responses = iter([
+            httpx.Response(200, json={'value': [raw()]}),
+            httpx.Response(503),
+            httpx.Response(200, json={'value': []}),
+            httpx.Response(200, json={'value': [raw(level=2)]}),
+        ])
+        cache.http = httpx.AsyncClient(transport=httpx.MockTransport(lambda request: next(responses)))
+        url = cache.query('2026-01-09', '2026-01-09')
+        try:
+            await cache.pages(url)
+            status = cache.api_status()
+            timestamp = status['last_update']
+            assert status['connected'] is True
+            assert timestamp and datetime.fromisoformat(timestamp).utcoffset().total_seconds() == 0
+            assert status['last_checked'] and notified.is_set()
+            notified.clear()
+            with pytest.raises(httpx.HTTPStatusError):
+                await cache.pages(url)
+            status = cache.api_status()
+            assert status['connected'] is False
+            assert status['last_update'] == timestamp
+            assert status['error'] and notified.is_set()
+            await cache.pages(url)
+            assert cache.api_status()['connected'] is True
+            assert cache.api_status()['last_update'] == timestamp  # Empty response is not a data update.
+            assert cache.api_status()['error'] is None
+            await cache.pages(url)
+            assert datetime.fromisoformat(cache.api_status()['last_update']) >= datetime.fromisoformat(timestamp)
+            fresh = KompasCache()
+            try:
+                assert fresh.api_status()['connected'] is None  # Never reuse stale connection health after restart.
+                assert fresh.api_status()['last_update'] == cache.api_status()['last_update']
+            finally:
+                await fresh.close()
+        finally:
+            await cache.close()
+    asyncio.run(scenario())
+
+
+@pytest.mark.parametrize('failure', ['timeout', 'json', 'schema', 'level'])
+def test_api_health_rejects_network_and_invalid_response(database, failure):
+    async def scenario():
+        cache = KompasCache()
+        await cache.http.aclose()
+        def handler(request):
+            if failure == 'timeout':
+                raise httpx.ReadTimeout('timeout', request=request)
+            if failure == 'json':
+                return httpx.Response(200, text='not json')
+            if failure == 'schema':
+                return httpx.Response(200, json={'unexpected': []})
+            return httpx.Response(200, json={'value': [raw(level=99)]})
+        cache.http = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+        try:
+            with pytest.raises((ValueError, httpx.ReadTimeout)):
+                await cache.pages(cache.query('2026-01-09', '2026-01-09'))
+            assert cache.api_status()['connected'] is False
+            assert cache.api_status()['last_update'] is None
+        finally:
+            await cache.close()
+    asyncio.run(scenario())
+
+
+def test_api_health_expires_after_thirty_minutes_and_uses_legacy_update(database):
+    from datetime import timedelta
+    async def scenario():
+        db.set_setting('kompas_last_sync', '2026-01-09T12:00:00+00:00')
+        cache = KompasCache()
+        try:
+            cache.connection_result(True)
+            checked = cache.api_last_checked
+            assert cache.api_status(checked + timedelta(minutes=29))['connected'] is True
+            assert cache.api_status(checked + timedelta(minutes=31))['connected'] is False
+            assert cache.api_status()['last_update'] == '2026-01-09T12:00:00+00:00'
+        finally:
+            await cache.close()
+    asyncio.run(scenario())

@@ -194,7 +194,7 @@ function renderSensorTariffs() {
   const select = $('#sensor-tariff');
   if (document.activeElement === select) return;
   const selected = state.sensorDirty ? select.value : (state.sensors?.tariff_id || '');
-  select.innerHTML = '<option value="">Nie publikuj sensorów</option>' + state.tariffs.map((tariff) =>
+  select.innerHTML = '<option value="">Nie publikuj strefy i ceny</option>' + state.tariffs.map((tariff) =>
     `<option value="${escapeHtml(tariff.id)}">${escapeHtml(tariff.name)}</option>`).join('');
   if (selected && !state.tariffs.some((tariff) => tariff.id === selected)) {
     select.insertAdjacentHTML('beforeend', `<option value="${escapeHtml(selected)}">Usunięta taryfa — wybierz inną</option>`);
@@ -212,17 +212,58 @@ async function loadSensors() {
     renderSensorTariffs();
     $('#sensor-current').textContent = data.current_zone || '—';
     $('#sensor-published').textContent = data.published_state || '—';
+    const next = data.next_change || {};
+    $('#sensor-next-change').textContent = next.next_change
+      ? `${formatInstant(next.next_change.at)} → ${next.next_change.zone_name}` : (next.reason || 'Brak danych');
+    $('#sensor-next-mqtt').textContent = next.mqtt_error ||
+      (next.mqtt_status === 'published' ? 'Opublikowano przez MQTT' : 'Oczekiwanie na publikację');
+    await loadDynamicSchedule();
+    const apiStatus = data.api || {};
+    const apiDate = (value) => value ? new Date(value).toLocaleString('pl-PL', {timeZone: 'Europe/Warsaw'}) : '—';
+    $('#sensor-api-update').textContent = apiDate(apiStatus.last_update);
+    $('#sensor-api-checked').textContent = apiDate(apiStatus.last_checked);
+    $('#sensor-api-connected').textContent = apiStatus.connected == null ? 'Oczekiwanie na sprawdzenie' :
+      `${apiStatus.connected ? 'true — połączono' : 'false — brak połączenia'}${apiStatus.error ? ` · ${apiStatus.error}` : ''}`;
+    $('#sensor-api-mqtt').textContent = apiStatus.mqtt_error ||
+      (apiStatus.mqtt_status === 'published' ? 'Opublikowano przez MQTT' : 'Oczekiwanie na publikację');
     const priceLabel = (price, mode) => price == null ? '—' :
       `${formatNumber(price, 6)} zł/kWh ${mode === 'net' ? 'netto' : 'brutto'}`;
     $('#sensor-price-current').textContent = priceLabel(data.current_price, data.price_mode);
     $('#sensor-price-published').textContent = priceLabel(data.published_price, data.published_price_mode);
-    const labels = { disabled: 'Publikacja wyłączona', published: 'Opublikowano przez MQTT',
+    const labels = { disabled: 'Publikacja strefy i ceny wyłączona', published: 'Opublikowano przez MQTT',
       missing_tariff: 'Wybrana taryfa nie istnieje', error: 'Błąd publikacji — ponawiam automatycznie' };
     $('#sensor-status').textContent = data.error || labels[data.status] || 'Oczekiwanie na publikację';
     $('#sensor-updated').textContent = data.last_published
       ? new Date(data.last_published).toLocaleString('pl-PL', {timeZone: 'Europe/Warsaw'}) : '—';
   } catch (error) {
     $('#sensor-status').textContent = `Nie udało się pobrać statusu: ${error.message}`;
+  }
+}
+
+function formatInstant(value) {
+  return new Date(value).toLocaleString('pl-PL', {timeZone: 'Europe/Warsaw', timeZoneName: 'short',
+    year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit'});
+}
+
+async function loadDynamicSchedule() {
+  const container = $('#dynamic-schedule');
+  try {
+    const plan = await api('api/kompas/schedule');
+    const time = (value, end = false) => {
+      const label = new Date(value).toLocaleTimeString('pl-PL', {
+        timeZone: 'Europe/Warsaw', hour: '2-digit', minute: '2-digit', timeZoneName: 'short'});
+      return end ? label.replace(/^00:00/, '24:00') : label;
+    };
+    container.innerHTML = `<p class="muted small">${escapeHtml(plan.tariff_name || 'Brak taryfy G14dynamic')}
+      ${plan.is_current_tariff ? '· Twoja obecna taryfa' : '· podgląd; sensor następnej zmiany korzysta z taryfy wybranej w Sensorach'}</p>
+      <div class="schedule-days">${(plan.days || []).map((day) => `<section class="schedule-day">
+        <h4>${formatDate(day.date)}</h4><p class="muted small">${day.available_hours}/${day.expected_hours} opublikowanych godzin${day.complete ? '' : ' · niepełne dane'}</p>
+        <ol class="schedule-segments">${day.segments.map((segment) => `<li class="schedule-segment zone-level-${segment.level ?? 'missing'}">
+          <span class="schedule-time">${escapeHtml(time(segment.start))} – ${escapeHtml(time(segment.end, true))}</span>
+          <strong>${escapeHtml(segment.zone_name || 'Brak opublikowanych danych')}</strong>
+          ${segment.price_gross == null ? '' : `<span class="muted small">${formatNumber(segment.price_gross, 4)} zł/kWh brutto</span>`}</li>`).join('')}</ol></section>`).join('')}</div>`;
+  } catch (error) {
+    container.textContent = `Nie udało się pobrać harmonogramu: ${error.message}`;
   }
 }
 
@@ -544,6 +585,69 @@ async function handleAnalyze(event) {
   }
 }
 
+function renderDataQuality(quality) {
+  if (!quality) return '<p class="muted small">Ta zapisana analiza nie ma informacji o kompletności. Wykonaj ją ponownie.</p>';
+  const months = (quality.months || []).map((row) => `<tr>
+    <td>${escapeHtml(row.month)}${row.partial_month ? ' · fragment miesiąca' : ''}</td>
+    <td>${row.received_hours}/${row.expected_hours}</td><td>${row.percent == null ? '—' : `${formatNumber(row.percent, 2)}%`}</td>
+    <td>${row.missing_hours ? `<strong class="coverage-warning">Brak ${row.missing_hours} godz.</strong>` : row.expected_hours ? 'Kompletne' : 'Oczekiwanie'}${row.pending_hours ? ` · ${row.pending_hours} godz. jeszcze niezakończonych` : ''}</td></tr>`).join('');
+  const gaps = (quality.gaps || []).map((gap) => `<li>${escapeHtml(formatInstant(gap.start))} – ${escapeHtml(formatInstant(gap.end))} · ${gap.hours} godz.</li>`).join('');
+  return `<section class="card data-quality"><div class="card-head"><h3>Kompletność danych</h3>
+      <strong class="${quality.missing_hours ? 'coverage-warning' : ''}">${quality.percent == null ? 'Oczekiwanie na zakończone godziny' : `${formatNumber(quality.percent, 2)}% godzin`}</strong></div>
+    <p>${quality.received_hours} z ${quality.expected_hours} zakończonych godzin ma prawidłowe statystyki zużycia.
+      ${quality.missing_hours ? `<strong class="coverage-warning">Brakuje ${quality.missing_hours} godzin. Koszty i ranking mogą się zmienić po uzupełnieniu danych.</strong>` : ''}</p>
+    <p class="muted small">Czas Europe/Warsaw, z uwzględnieniem dni 23- i 25-godzinnych. Zerowe odczyty liczą się jako dane.
+      ${quality.pending_hours ? `${quality.pending_hours} trwających lub przyszłych godzin nie zaliczono do braków.` : ''}
+      ${quality.invalid_samples ? `${quality.invalid_samples} nieprawidłowych odczytów nie potwierdza kompletności.` : ''}
+      Brakujących godzin nie uzupełniamy szacunkiem.</p>
+    <details class="coverage-details"><summary>Kompletność miesięcy i brakujące przedziały (${quality.gap_count})</summary>
+      <div class="table-wrap"><table class="data-table"><thead><tr><th>Miesiąc</th><th>Godziny</th><th>Kompletność</th><th>Status</th></tr></thead><tbody>${months}</tbody></table></div>
+      ${gaps ? `<p class="muted small">Brakujące przedziały; godzina końcowa jest wyłączona z przedziału.</p><ul>${gaps}</ul>` : ''}
+      ${quality.gaps_truncated ? '<p class="muted small">Pokazano pierwsze 200 przedziałów. Podsumowanie uwzględnia wszystkie braki.</p>' : ''}
+    </details></section>`;
+}
+
+function renderInvoiceDonut(tariff) {
+  const breakdown = tariff.breakdown || {};
+  const detailed = Array.isArray(breakdown.invoice_items);
+  const fallback = [
+    ['Energia czynna netto (bez akcyzy)', 'energy_pln'], ['Dystrybucja netto', 'distribution_pln'],
+    ['Opłaty zmienne netto', 'variable_fees_pln'], ['Akcyza', 'excise_pln'],
+    ['Opłaty stałe netto', 'fixed_pln'], ['Opłata mocowa netto', 'capacity_fee_pln'], ['VAT', 'vat_pln'],
+  ].map(([name, key]) => ({name, amount_pln: breakdown[key] ?? 0}));
+  const items = (detailed ? breakdown.invoice_items : fallback).map((item) => ({
+    name: String(item.name || 'Składnik rachunku'), amount: Math.max(0, Number(item.amount_pln) || 0),
+  }));
+  const sum = items.reduce((total, item) => total + item.amount, 0);
+  const colors = ['#eab43d', '#63c7b2', '#7da7ed', '#b891de', '#e38670', '#a2bd68', '#d68fb4',
+    '#68b7cf', '#d7c783', '#8e9be0', '#e3a468', '#80c69b', '#c5a2cd', '#93b7c3', '#b5ad7b', '#ba8b76'];
+  const circumference = 2 * Math.PI * 82;
+  let offset = 0;
+  const arcs = items.map((item, index) => {
+    if (!item.amount || !sum) return '';
+    const length = item.amount / sum * circumference;
+    const title = `${item.name}: ${formatPLN(item.amount)} · ${formatNumber(item.amount / sum * 100, 2)}%`;
+    const arc = `<circle class="invoice-donut-segment" cx="110" cy="110" r="82" fill="none" stroke="${colors[index % colors.length]}"
+      stroke-width="30" stroke-dasharray="${length.toFixed(6)} ${circumference.toFixed(6)}" stroke-dashoffset="${(-offset).toFixed(6)}"
+      transform="rotate(-90 110 110)"><title>${escapeHtml(title)}</title></circle>`;
+    offset += length;
+    return arc;
+  }).join('');
+  const legend = items.map((item, index) => `<li class="invoice-legend-item${item.amount ? '' : ' is-zero'}">
+    <span class="invoice-swatch" style="background:${colors[index % colors.length]}"></span>
+    <span class="invoice-item-name">${escapeHtml(item.name)}</span>
+    <strong>${formatPLN(item.amount)}</strong><span class="muted">${formatNumber(sum ? item.amount / sum * 100 : 0, 2)}%</span></li>`).join('');
+  return `<section class="invoice-chart"><h4>Struktura potencjalnej faktury</h4>
+    <div class="invoice-chart-layout"><div class="invoice-donut">
+      <svg viewBox="0 0 220 220" role="img" aria-label="${escapeHtml(`Składniki rachunku dla ${tariff.name}, razem ${formatPLN(tariff.total_pln)} brutto. Kwoty i udziały w legendzie.`)}">
+        <circle cx="110" cy="110" r="82" fill="none" stroke="var(--surface-3)" stroke-width="30"></circle>${arcs}</svg>
+      <div class="invoice-donut-center"><span>Razem brutto</span><strong>${formatPLN(tariff.total_pln)}</strong></div></div>
+      <ul class="invoice-legend" aria-label="Składniki faktury, kwoty i udziały">${legend}</ul></div>
+    <p class="muted small">${sum ? 'Składniki netto i akcyza, VAT jako osobna pozycja. Kwoty zaokrąglone do groszy.' : 'Brak kosztów do przedstawienia na wykresie.'}
+      ${detailed ? '' : 'Ta zapisana analiza ma opłaty zmienne i stałe zgrupowane. Wykonaj ją ponownie, aby zobaczyć poszczególne opłaty.'}</p>
+    </section>`;
+}
+
 function renderAnalysis(result) {
   const container = $('#analysis-results');
   const allTariffs = result.tariffs || [];
@@ -555,7 +659,7 @@ function renderAnalysis(result) {
       <div class="empty-icon">⚠️</div>
       <h3>Nie udało się policzyć żadnej taryfy</h3>
       <p class="muted">${escapeHtml(failed[0]?.error || 'Brak danych do obliczeń.')}</p>
-    </div>`;
+    </div>${renderDataQuality(result.data_quality)}`;
     return;
   }
 
@@ -658,6 +762,7 @@ function renderAnalysis(result) {
               <p class="muted small" style="margin-top:10px">Szacunek w skali roku: <strong>${formatPLN(tariff.annual_pln)}</strong></p>
             </div>
           </div>
+          ${renderInvoiceDonut(tariff)}
         </div>
       </details>`;
   }).join('');
@@ -719,6 +824,10 @@ function renderAnalysis(result) {
         <div class="legend"><span>0 kWh</span><span class="legend-gradient"></span><span>${formatNumber(maximum, 2)} kWh</span><span>· — brak statystyk</span></div></div>`;
   }
 
+  const qualityByMonth = new Map((result.data_quality?.months || []).map((row) => [row.month, row]));
+  const missingLabel = (month) => qualityByMonth.get(month)?.missing_hours
+    ? ` · niepełne dane: brak ${qualityByMonth.get(month).missing_hours} godz.` : '';
+  const monthWarning = (month) => missingLabel(month) ? `<span class="coverage-warning" title="${escapeHtml(missingLabel(month))}"> ⚠</span>` : '';
   const monthly = Array.isArray(result.monthly_kwh) ? result.monthly_kwh : [];
   let monthlyChart = '';
   if (monthly.length) {
@@ -727,9 +836,10 @@ function renderAnalysis(result) {
       const [year, month] = String(item.month).split('-').map(Number);
       const label = new Date(year, month - 1, 1).toLocaleDateString('pl-PL', { month: 'short', year: '2-digit' });
       const height = Math.max(3, ((Number(item.kwh) || 0) / monthlyMax) * 100);
-      return `<div class="month-bar" title="${escapeHtml(item.month)}: ${formatNumber(item.kwh, 1)} kWh">
-        <div class="month-bar-track"><div class="month-bar-fill" style="height:${height.toFixed(1)}%"></div></div>
-        <span>${escapeHtml(label)}</span>
+      const tooltip = escapeHtml(`${monthLabel(item.month)} — ${formatNumber(item.kwh, 2)} kWh${missingLabel(item.month)}`);
+      return `<div class="month-bar" title="${tooltip}" aria-label="${tooltip}" tabindex="0">
+        <div class="month-bar-track"><div class="month-bar-fill" title="${tooltip}" style="height:${height.toFixed(1)}%"></div></div>
+        <span>${escapeHtml(label)}${monthWarning(item.month)}</span>
       </div>`;
     }).join('');
     monthlyChart = `
@@ -748,14 +858,14 @@ function renderAnalysis(result) {
     const costBars = monthlyCosts.map((row) => {
       const bar = (cost, kind, label) => {
         const available = cost && cost.total_pln !== null && !cost.error;
-        const title = available ? `${monthLabel(row.month)} — ${label}: ${cost.name}, ${formatPLN(cost.total_pln)} brutto` : `${monthLabel(row.month)} — ${label}: ${cost?.error || 'brak dostępnej taryfy'}`;
+        const title = available ? `${monthLabel(row.month)} — ${label}: ${cost.name}, ${formatPLN(cost.total_pln)} brutto${missingLabel(row.month)}` : `${monthLabel(row.month)} — ${label}: ${cost?.error || 'brak dostępnej taryfy'}`;
         const height = available ? Math.max(0, Number(cost.total_pln) / maxCost * 100) : 0;
         return `<div class="cost-bar-column" title="${escapeHtml(title)}" aria-label="${escapeHtml(title)}" tabindex="0">
           <div class="cost-bar-track"><div class="cost-bar-fill ${kind}" style="height:${height.toFixed(3)}%"></div></div>
           <span class="cost-bar-value">${available ? formatNumber(cost.total_pln, 2) : '—'}</span></div>`;
       };
       return `<div class="cost-month"><div class="cost-pair">${bar(row.current, 'current', 'Moja taryfa')}${bar(row.recommended, 'cheapest', 'Najtańsza taryfa')}</div>
-        <span class="cost-month-label">${escapeHtml(monthLabel(row.month))}</span></div>`;
+        <span class="cost-month-label">${escapeHtml(monthLabel(row.month))}${monthWarning(row.month)}</span></div>`;
     }).join('');
     const unavailable = monthlyCosts.filter((row) => row.unavailable_tariffs?.length).map((row) =>
       `<li><strong>${escapeHtml(monthLabel(row.month))}</strong>: ${row.unavailable_tariffs.map((cost) => `${escapeHtml(cost.name)} — ${escapeHtml(cost.error)}`).join('; ')}</li>`).join('');
@@ -783,6 +893,7 @@ function renderAnalysis(result) {
     </div>
 
     ${warningBlock}
+    ${renderDataQuality(result.data_quality)}
 
     <div class="result-hero">
       <div class="hero-main">

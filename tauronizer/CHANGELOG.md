@@ -1,5 +1,19 @@
 # Historia zmian
 
+## 0.4.5 — 15.11.2026
+
+- Węższe słupki kosztów miesięcznych i podpowiedzi z wartościami zużycia po najechaniu na słupek.
+
+- Wykres pączkowy struktury faktury w szczegółach każdej taryfy, z osobnymi opłatami, akcyzą, VAT oraz legendą kwot i udziałów. Starsze analizy korzystają z dostępnych sum zbiorczych.
+
+- Raport kompletności godzin zużycia: procent, miesiące, lista luk i ostrzeżenia na wykresach. Uwzględnia zmianę czasu i nie liczy przyszłych godzin jako braków.
+- Harmonogram G14dynamic na dziś i jutro z nazwami stref, cenami zmiennymi brutto i oznaczeniem nieopublikowanych godzin.
+- Sensor MQTT czasu następnej potwierdzonej zmiany strefy G14dynamic, z nazwą kolejnej strefy w atrybutach; bez zgadywania zmian po lukach.
+
+- Sensory MQTT diagnostyki API Kompasu PSE: czas ostatniego pobrania i zapisu danych oraz binarny status połączenia.
+- Podgląd diagnostyki w Sensorach, niezależny od wyboru taryfy i dostępności aktualnej strefy.
+- Data aktualizacji pozostaje w bazie po restarcie i błędach; status połączenia wymaga nowego sprawdzenia po restarcie i wygasa po 30 minutach bez sprawdzenia.
+
 ## 0.4.1 — 15.11.2026
 
 - Heatmapa zużycia według miesięcy i dni tygodnia, z rozróżnieniem lat i brakujących statystyk.

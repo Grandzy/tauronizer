@@ -1,5 +1,5 @@
 name: Tauronizer
-version: "0.4.1"
+version: "0.4.5"
 slug: tauronizer
 description: Porównywarka taryf energii elektrycznej Tauron na podstawie historii zużycia z Home Assistant.
 url: https://github.com/direk/tauronizer

@@ -255,3 +255,83 @@ def test_sensor_variable_price_matches_analysis(preset_id):
     assert result['error'] is None
     assert price_state(tariff, 'net', when)['state'] == pytest.approx(result['breakdown']['net_pln'] / amount)
     assert price_state(tariff, 'gross', when)['state'] == pytest.approx(result['total_pln'] / amount)
+
+
+def test_api_diagnostics_discovery_and_publication_independent_of_tariff(sensor_client):
+    from tauronizer.sensors import (API_UPDATE_STATE_TOPIC, API_CONNECTION_STATE_TOPIC,
+        API_UPDATE_DISCOVERY_TOPIC, API_CONNECTION_DISCOVERY_TOPIC,
+        API_UPDATE_AVAILABILITY_TOPIC, API_CONNECTION_AVAILABILITY_TOPIC)
+    client, fake = sensor_client
+    cache = app.state.kompas
+    # No tariff selected; timestamp unavailable before first data download.
+    client.portal.call(app.state.sensors.refresh)
+    assert (API_UPDATE_AVAILABILITY_TOPIC, 'offline', False) in fake.messages
+    assert (API_CONNECTION_AVAILABILITY_TOPIC, 'offline', False) in fake.messages
+    assert not any(topic == API_CONNECTION_STATE_TOPIC for topic, _, _ in fake.messages)
+    timestamp = '2026-01-09T12:34:56+00:00'
+    db.set_setting('kompas_last_update', timestamp)
+    client.portal.call(cache.connection_result, True)
+    client.portal.call(app.state.sensors.refresh)
+    messages = {topic: payload for topic, payload, _ in fake.messages}
+    update_config = json.loads(messages[API_UPDATE_DISCOVERY_TOPIC])
+    connection_config = json.loads(messages[API_CONNECTION_DISCOVERY_TOPIC])
+    assert update_config['device_class'] == 'timestamp'
+    assert update_config['default_entity_id'] == 'sensor.tauronizer_api_ostatnia_aktualizacja'
+    assert connection_config['device_class'] == 'connectivity'
+    assert connection_config['default_entity_id'] == 'binary_sensor.tauronizer_api_polaczenie'
+    assert update_config['expire_after'] == connection_config['expire_after'] == 90
+    assert update_config['availability_topic'] != AVAILABILITY_TOPIC
+    assert connection_config['availability_topic'] != AVAILABILITY_TOPIC
+    assert json.loads(messages[API_UPDATE_STATE_TOPIC])['state'] == timestamp
+    assert json.loads(messages[API_CONNECTION_STATE_TOPIC])['state'] is True
+    assert (API_CONNECTION_AVAILABILITY_TOPIC, 'online', False) in fake.messages
+    assert all(not retain for topic, _, retain in fake.messages if topic in (API_CONNECTION_STATE_TOPIC, API_UPDATE_STATE_TOPIC))
+    # API failure changes boolean but preserves last successful data update.
+    client.portal.call(cache.connection_result, False)
+    client.portal.call(app.state.sensors.refresh)
+    messages = {topic: payload for topic, payload, _ in fake.messages}
+    assert json.loads(messages[API_CONNECTION_STATE_TOPIC])['state'] is False
+    assert json.loads(messages[API_UPDATE_STATE_TOPIC])['state'] == timestamp
+    snapshot = client.get('/api/sensors').json()
+    assert snapshot['api']['connected'] is False
+    assert snapshot['api']['last_update'] == timestamp
+    assert snapshot['api']['mqtt_status'] == 'published'
+    assert snapshot['status'] == 'disabled'
+    client.portal.call(cache.connection_result, True)
+    client.portal.call(app.state.sensors.refresh)
+    messages = {topic: payload for topic, payload, _ in fake.messages}
+    assert json.loads(messages[API_CONNECTION_STATE_TOPIC])['state'] is True
+
+
+def test_api_sensors_still_publish_when_dynamic_zone_data_missing(sensor_client):
+    from tauronizer.sensors import API_CONNECTION_STATE_TOPIC
+    client, fake = sensor_client
+    client.portal.call(app.state.kompas.connection_result, True)
+    result = client.put('/api/sensors', json={'tariff_id': 'preset_g14dynamic'}).json()
+    assert result['status'] == 'waiting_data'
+    assert result['api']['mqtt_status'] == 'published'
+    messages = {topic: payload for topic, payload, _ in fake.messages}
+    assert json.loads(messages[API_CONNECTION_STATE_TOPIC])['state'] is True
+
+
+def test_api_mqtt_failure_is_separate_from_api_health_and_recovers(sensor_client):
+    client, fake = sensor_client
+    client.portal.call(app.state.kompas.connection_result, True)
+    fake.fail = True
+    client.portal.call(app.state.sensors.refresh)
+    result = client.get('/api/sensors').json()['api']
+    assert result['connected'] is True
+    assert result['mqtt_status'] == 'error'
+    fake.fail = False
+    client.portal.call(app.state.sensors.refresh)
+    assert client.get('/api/sensors').json()['api']['mqtt_status'] == 'published'
+
+
+def test_api_sensors_mark_unavailable_on_shutdown(sensor_client):
+    from tauronizer.sensors import API_UPDATE_AVAILABILITY_TOPIC, API_CONNECTION_AVAILABILITY_TOPIC
+    client, fake = sensor_client
+    client.portal.call(app.state.kompas.connection_result, True)
+    client.portal.call(app.state.sensors.refresh)
+    client.portal.call(app.state.sensors.stop)
+    assert (API_UPDATE_AVAILABILITY_TOPIC, 'offline', False) in fake.messages
+    assert (API_CONNECTION_AVAILABILITY_TOPIC, 'offline', False) in fake.messages

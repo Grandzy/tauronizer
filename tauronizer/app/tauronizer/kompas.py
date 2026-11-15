@@ -64,19 +64,47 @@ class KompasCache:
         self.wake = asyncio.Event()
         self.status = 'ready' if get_setting('kompas_last_sync') and not get_setting('kompas_history_next') else 'waiting'
         self.error = None
+        self.api_connected = None
+        self.api_last_checked = None
+        self.api_error = None
         self.http = httpx.AsyncClient(timeout=30.0, follow_redirects=False)
+
+    def api_status(self, now=None):
+        now = now or datetime.now(timezone.utc)
+        stale = self.api_last_checked is not None and (now - self.api_last_checked).total_seconds() > 1800
+        return {
+            'connected': False if stale else self.api_connected,
+            'last_checked': self.api_last_checked.isoformat() if self.api_last_checked else None,
+            'last_update': get_setting('kompas_last_update') or get_setting('kompas_last_sync'),
+            'error': 'Brak sprawdzenia API od ponad 30 minut.' if stale else self.api_error,
+            'source': API,
+        }
+
+    def connection_result(self, connected):
+        self.api_connected = connected
+        self.api_last_checked = datetime.now(timezone.utc)
+        self.api_error = None if connected else 'API Kompasu PSE jest niedostępne lub zwróciło nieprawidłowe dane.'
+        if self.notify:
+            self.notify.set()
 
     def snapshot(self):
         gaps = kompas_gaps()
         return {**kompas_summary(), 'missing_archive_hours': sum(day['missing_hours'] for day in gaps), 'status': self.status, 'error': self.error,
                 'last_sync': get_setting('kompas_last_sync'),
                 'history_through': get_setting('kompas_history_through'),
-                'source': API}
+                'source': API, 'api': self.api_status()}
 
     async def document(self, url):
-        response = await self.http.get(valid_url(url))
-        response.raise_for_status()
-        return response.json()
+        try:
+            response = await self.http.get(valid_url(url))
+            response.raise_for_status()
+            document = response.json()
+            parse_rows(document)  # HTTP 200 alone is not a usable API response.
+            self.connection_result(True)
+            return document
+        except Exception:
+            self.connection_result(False)
+            raise
 
     def query(self, start, end):
         return str(httpx.URL(API, params={
@@ -100,6 +128,8 @@ class KompasCache:
                 if not next_url:
                     checkpoint['kompas_history_through'] = archive_target
                     checkpoint['kompas_history_target'] = ''
+            if rows:
+                checkpoint['kompas_last_update'] = datetime.now(timezone.utc).isoformat()
             save_kompas(rows, checkpoint)
             if self.notify:
                 self.notify.set()

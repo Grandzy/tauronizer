@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from calendar import monthrange
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta
 from typing import Any, Sequence
@@ -82,6 +83,7 @@ def _cost_for_tariff(
     total_kwh: float,
     days: int,
     dynamic_levels: dict[str, int] | None = None,
+    capacity_basis: tuple[float, int] | None = None,
 ) -> dict[str, Any]:
     totals: dict[str, float] = {zone.id: 0.0 for zone in zones}
     for local_dt, kwh in local_samples:
@@ -103,7 +105,7 @@ def _cost_for_tariff(
     fixed_monthly = sum(float(fee.get("net_monthly", 0) or 0) for fee in fixed_fees)
     months = days * 12 / DAYS_PER_YEAR
     fixed_pln = fixed_monthly * months
-    capacity = capacity_fee_details(config, total_kwh, days)
+    capacity = capacity_fee_details(config, *(capacity_basis or (total_kwh, days)))
     capacity_monthly = capacity["net_monthly"] if capacity else 0.0
     capacity_pln = capacity_monthly * months
 
@@ -166,6 +168,7 @@ def analyze(
     samples: Sequence[ConsumptionSample],
     start_date: date,
     end_date: date,
+    current_tariff: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Compare the cost of every tariff for a consumption profile.
 
@@ -182,23 +185,49 @@ def analyze(
 
     local_samples: list[tuple[datetime, float]] = []
     weekday_hour = [[0.0 for _ in range(24)] for _ in range(7)]
-    monthly: dict[str, float] = {}
+    monthly_samples: dict[str, list[tuple[datetime, float]]] = {}
+    monthly_weekday: dict[str, list[float]] = {}
+    monthly_weekday_counts: dict[str, list[int]] = {}
+    cursor = start_date.replace(day=1)
+    while cursor <= end_date:
+        key = cursor.strftime("%Y-%m")
+        monthly_samples[key] = []
+        monthly_weekday[key] = [0.0] * 7
+        monthly_weekday_counts[key] = [0] * 7
+        cursor = (cursor.replace(day=28) + timedelta(days=4)).replace(day=1)
+    monthly = dict.fromkeys(monthly_samples, 0.0)
 
     for sample in samples:
         kwh = max(sample.kwh, 0.0)
         local_dt = sample.timestamp.astimezone(TZ)
         local_samples.append((local_dt, kwh))
         weekday_hour[local_dt.weekday()][local_dt.hour] += kwh
-        monthly[local_dt.strftime("%Y-%m")] = monthly.get(local_dt.strftime("%Y-%m"), 0.0) + kwh
+        month = local_dt.strftime("%Y-%m")
+        monthly[month] += kwh
+        monthly_samples[month].append((local_dt, kwh))
+        monthly_weekday[month][local_dt.weekday()] += kwh
+        monthly_weekday_counts[month][local_dt.weekday()] += 1
 
+    comparison_tariffs = list(tariffs)
+    if current_tariff and not any(t["id"] == current_tariff["id"] for t in comparison_tariffs):
+        comparison_tariffs.append(current_tariff)
     dynamic_levels = None
-    if any(tariff['config'].get('zone_source') == 'pse_kompas' for tariff in tariffs):
+    if any(tariff['config'].get('zone_source') == 'pse_kompas' for tariff in comparison_tariffs):
         from .db import kompas_levels
         dynamic_levels = kompas_levels()
+    compiled: dict[str, Sequence[CompiledZone]] = {}
+    compile_errors: dict[str, str] = {}
+    for tariff in comparison_tariffs:
+        try:
+            compiled[tariff["id"]] = compile_zones(tariff["config"])
+        except TariffValidationError as exc:
+            compile_errors[tariff["id"]] = str(exc)
     results: list[dict[str, Any]] = []
     for tariff in tariffs:
         try:
-            zones = compile_zones(tariff["config"])
+            if tariff["id"] in compile_errors:
+                raise TariffValidationError(compile_errors[tariff["id"]])
+            zones = compiled[tariff["id"]]
             results.append(
                 _cost_for_tariff(
                     tariff, zones, local_samples, holidays, total_kwh, days, dynamic_levels
@@ -225,6 +254,36 @@ def analyze(
     max_savings = (
         valid[-1]["total_pln"] - valid[0]["total_pln"] if len(valid) > 1 else 0.0
     )
+    recommended_id = valid[0]["tariff_id"] if valid else None
+    monthly_costs = []
+    for month, month_samples in monthly_samples.items():
+        year, month_number = map(int, month.split("-"))
+        month_start = max(start_date, date(year, month_number, 1))
+        month_end = min(end_date, date(year, month_number, monthrange(year, month_number)[1]))
+        month_days = (month_end - month_start).days + 1
+        costs = []
+        for tariff in comparison_tariffs:
+            if tariff["id"] not in {recommended_id, current_tariff["id"] if current_tariff else None}:
+                continue
+            try:
+                if not month_samples:
+                    raise ValueError("Brak statystyk zużycia w tym miesiącu.")
+                if tariff["id"] in compile_errors:
+                    raise TariffValidationError(compile_errors[tariff["id"]])
+                cost = _cost_for_tariff(
+                    tariff, compiled[tariff["id"]], month_samples, holidays,
+                    monthly[month], month_days, dynamic_levels, (total_kwh, days),
+                )
+            except Exception as exc:
+                cost = _empty_result(tariff, str(exc))
+            costs.append({key: cost[key] for key in ("tariff_id", "name", "total_pln", "error")})
+        recommended = next((cost for cost in costs if cost["tariff_id"] == recommended_id), None)
+        current = next((cost for cost in costs if current_tariff and cost["tariff_id"] == current_tariff["id"]), None)
+        monthly_costs.append({
+            "month": month, "days": month_days, "sample_count": len(month_samples),
+            "current": current, "recommended": recommended,
+            "unavailable_tariffs": [cost for cost in costs if cost["error"] is not None],
+        })
     profile_max = max((value for row in weekday_hour for value in row), default=0.0)
 
     return {
@@ -245,6 +304,15 @@ def analyze(
             ],
             "max_cell_kwh": _round(profile_max, 3),
         },
+        "month_weekday_profile": [
+            {"month": month, "weekday_kwh": [_round(value, 3) for value in values],
+             "weekday_sample_count": monthly_weekday_counts[month]}
+            for month, values in monthly_weekday.items()
+        ],
+        "current_tariff_id": current_tariff["id"] if current_tariff else None,
+        "current_tariff_name": current_tariff["name"] if current_tariff else None,
+        "monthly_costs": monthly_costs,
+        "monthly_costs_basis": "analysis",
         "monthly_kwh": [
             {"month": month, "kwh": _round(value, 3)}
             for month, value in sorted(monthly.items())
@@ -258,6 +326,11 @@ def analyze(
             "w taryfie; bez podanej wartości próg oszacowano z zużycia × 365,25/liczba dni. "
             "To szacunek porównawczy, nie kwalifikacja według odczytów Taurona. "
             "Wszystkie składniki i akcyzę zsumowano netto; VAT doliczono raz do sumy. "
+            "Wykres miesięczny porównuje obecną taryfę z najtańszą w całej analizie "
+            "spośród taryf wybranych do porównania. Ta sama taryfa obowiązuje dla wszystkich miesięcy. Opłaty stałe są proporcjonalne "
+            "do dni objętych analizą w miesiącu, a próg mocowej pochodzi z całego okresu. "
+            "Miesiące bez statystyk nie mają wyliczonego porównania; luki nie są uzupełniane szacunkiem. "
+            "Zaokrąglenia miesięczne mogą dać groszowe różnice względem sumy okresu. "
             "Skonfigurowane stawki obowiązują w całej symulacji, niezależnie od dat zużycia."
         ),
     }

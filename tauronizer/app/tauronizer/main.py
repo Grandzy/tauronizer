@@ -25,6 +25,7 @@ from .db import (
     duplicate_tariff,
     get_analysis,
     get_tariff,
+    get_setting,
     set_setting,
     init_db,
     list_analyses,
@@ -346,7 +347,9 @@ async def run_analysis(payload: AnalyzeRequest, request: Request) -> dict[str, A
             detail="Brak taryf do porównania. Dodaj taryfę lub przywróć presety.",
         )
 
-    result = analyze(selected, clean_samples, payload.start, payload.end)
+    current_tariff_id = get_setting("sensor_tariff_id")
+    current_tariff = next((t for t in all_tariffs if t["id"] == current_tariff_id), None)
+    result = analyze(selected, clean_samples, payload.start, payload.end, current_tariff=current_tariff)
     result.update(
         {
             "entity_id": payload.entity_id,

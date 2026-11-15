@@ -212,3 +212,102 @@ def test_legacy_tariff_without_capacity_is_not_charged_automatically():
     cost = analyze([item], [], date(2026, 1, 1), date(2026, 12, 31))["tariffs"][0]
     assert cost["capacity_fee"] is None
     assert cost["breakdown"]["capacity_fee_pln"] == 0
+
+
+def test_month_weekday_profile_keeps_years_and_local_dates():
+    samples = [
+        sample(datetime(2025, 12, 31, 23, tzinfo=TZ), 2),
+        sample(datetime(2026, 1, 1, 0, tzinfo=TZ), 3),
+        sample(datetime(2026, 1, 1, 1, tzinfo=TZ), -5),
+    ]
+    result = analyze([tariff('g11')], samples, date(2025, 12, 31), date(2026, 1, 2))
+    december, january = result['month_weekday_profile']
+    assert december['month'] == '2025-12'
+    assert december['weekday_kwh'] == [0, 0, 2, 0, 0, 0, 0]
+    assert january['weekday_kwh'] == [0, 0, 0, 3, 0, 0, 0]
+    assert january['weekday_sample_count'][3] == 2
+    assert sum(sum(row['weekday_kwh']) for row in result['month_weekday_profile']) == result['total_kwh']
+
+
+def simple_monthly_tariff(identifier, rate, fixed=0):
+    return {'id': identifier, 'name': identifier, 'config': {
+        'zones': [{'id': 'all', 'name': 'All', 'days': list(range(7)),
+                   'intervals': ['00:00-24:00'], 'energy_net': rate, 'distribution_net': 0.2}],
+        'variable_fees': [{'name': 'Variable', 'net_per_kwh': 0.03}],
+        'excise_net_per_kwh': 0.005, 'vat_percent': 23,
+        'fixed_fees': [{'name': 'Fixed', 'net_monthly': fixed}],
+    }}
+
+
+def test_monthly_costs_use_analysis_winner_and_include_current_outside_ranking():
+    current = simple_monthly_tariff('current', 0.5, 30)
+    competitor = simple_monthly_tariff('other', 1.0)
+    samples = [sample(datetime(2026, 1, 5, 10, tzinfo=TZ), 100),
+               sample(datetime(2026, 2, 5, 10, tzinfo=TZ), 10)]
+    result = analyze([competitor], samples, date(2026, 1, 1), date(2026, 2, 28), current_tariff=current)
+    assert [t['tariff_id'] for t in result['tariffs']] == ['other']
+    january, february = result['monthly_costs']
+    assert january['recommended']['tariff_id'] == result['cheapest_tariff_id'] == 'other'
+    assert february['recommended']['tariff_id'] == 'other'
+    assert january['current']['total_pln'] < january['recommended']['total_pln']
+    expected_net = round(100 * .735 + 30 * 31 * 12 / 365.25, 2)
+    assert january['current']['total_pln'] == round(expected_net + round(expected_net * .23, 2), 2)
+    assert result['current_tariff_id'] == 'current'
+
+
+def test_monthly_costs_use_partial_days_and_one_capacity_tier_for_whole_analysis():
+    current = simple_monthly_tariff('current', 0.5, 10)
+    current['config']['capacity_fee'] = {'annual_kwh': None, 'net_monthly_rates': [1, 10, 100, 1000]}
+    samples = [sample(datetime(2026, 1, 31, 10, tzinfo=TZ), 100),
+               sample(datetime(2026, 2, 1, 10, tzinfo=TZ), 0)]
+    result = analyze([current], samples, date(2026, 1, 31), date(2026, 2, 28), current_tariff=current)
+    assert result['tariffs'][0]['capacity_fee']['net_monthly'] == 100
+    jan, feb = result['monthly_costs']
+    assert (jan['days'], feb['days']) == (1, 28)
+    expected_feb_net = round(110 * 28 * 12 / 365.25, 2)
+    assert feb['current']['total_pln'] == round(expected_feb_net + round(expected_feb_net * .23, 2), 2)
+    assert sum(row['current']['total_pln'] for row in result['monthly_costs']) == pytest.approx(result['tariffs'][0]['total_pln'], abs=.03)
+
+
+def test_monthly_costs_distinguish_missing_statistics_from_zero_consumption():
+    current = simple_monthly_tariff('current', .5, 10)
+    samples = [sample(datetime(2026, 2, 5, 10, tzinfo=TZ), 0)]
+    result = analyze([current], samples, date(2026, 1, 1), date(2026, 2, 28), current_tariff=current)
+    jan, feb = result['monthly_costs']
+    assert jan['current']['total_pln'] is None
+    assert jan['recommended']['total_pln'] is None
+    assert jan['current']['error']
+    assert feb['current']['total_pln'] > 0
+    assert feb['sample_count'] == 1
+
+
+def test_monthly_dynamic_failure_does_not_hide_other_months(monkeypatch):
+    from tauronizer import db
+    from tauronizer.kompas import utc_key
+    first = datetime(2026, 1, 5, 10, tzinfo=TZ)
+    monkeypatch.setattr(db, 'kompas_levels', lambda: {utc_key(first): 0})
+    current = tariff('g14dynamic')
+    result = analyze([tariff('g11')], [sample(first, 10), sample(datetime(2026, 2, 5, 10, tzinfo=TZ), 10)],
+                     date(2026, 1, 1), date(2026, 2, 28), current_tariff=current)
+    jan, feb = result['monthly_costs']
+    assert jan['current']['total_pln'] is not None
+    assert feb['current']['total_pln'] is None
+    assert feb['recommended']['tariff_id'] == 'g11'
+    assert feb['unavailable_tariffs'][0]['tariff_id'] == 'g14dynamic'
+
+
+def test_sixteen_month_chart_keeps_same_analysis_winner_even_when_monthly_winner_differs():
+    current = simple_monthly_tariff('current', 1.0)
+    proposed = simple_monthly_tariff('proposed', .5, 30)
+    samples = []
+    for index in range(16):
+        year, month = 2025 + index // 12, index % 12 + 1
+        samples.append(sample(datetime(year, month, 5, 10, tzinfo=TZ), 10 if index == 15 else 100))
+    result = analyze([current, proposed], samples, date(2025, 1, 1), date(2026, 4, 30), current_tariff=current)
+    assert result['monthly_costs_basis'] == 'analysis'
+    assert result['cheapest_tariff_id'] == 'proposed'
+    assert len(result['monthly_costs']) == 16
+    assert {row['recommended']['tariff_id'] for row in result['monthly_costs']} == {'proposed'}
+    assert result['monthly_costs'][-1]['current']['total_pln'] < result['monthly_costs'][-1]['recommended']['total_pln']
+    winner = result['tariffs'][0]
+    assert sum(row['recommended']['total_pln'] for row in result['monthly_costs']) == pytest.approx(winner['total_pln'], abs=.16)

@@ -296,3 +296,24 @@ def test_default_zone_is_saved_last_and_cannot_be_duplicated(client: TestClient)
     rejected = client.post('/api/tariffs', json={'name': 'Two defaults', 'config': config})
     assert rejected.status_code == 400
     assert 'tylko jedną' in rejected.json()['detail']
+
+
+def test_monthly_comparison_uses_sensor_tariff_and_preserves_history_snapshot(client):
+    from tauronizer.db import set_setting
+    tariffs = client.get('/api/tariffs').json()['tariffs']
+    current = next(t for t in tariffs if t['preset_id'] == 'g11')
+    other = next(t for t in tariffs if t['preset_id'] == 'g12')
+    set_setting('sensor_tariff_id', current['id'])
+    client.app.state.ha = FakeHA(make_samples())
+    result = client.post('/api/analyze', json={
+        'entity_id': 'sensor.energia_dom', 'start': '2026-01-05', 'end': '2026-01-05',
+        'tariff_ids': [other['id']],
+    }).json()
+    assert result['current_tariff_id'] == current['id']
+    assert [t['tariff_id'] for t in result['tariffs']] == [other['id']]
+    assert result['monthly_costs'][0]['current']['tariff_id'] == current['id']
+    assert result['monthly_costs'][0]['current']['total_pln'] > 0
+    set_setting('sensor_tariff_id', other['id'])
+    stored = client.get(f"/api/analyses/{result['id']}").json()['result']
+    assert stored['monthly_costs'] == result['monthly_costs']
+    assert stored['current_tariff_id'] == current['id']

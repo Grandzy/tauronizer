@@ -694,9 +694,34 @@ function renderAnalysis(result) {
       </div>`;
   }
 
+  const monthLabel = (month) => {
+    const [year, number] = String(month).split('-').map(Number);
+    return new Date(year, number - 1, 1).toLocaleDateString('pl-PL', { month: 'short', year: 'numeric' });
+  };
+  const monthProfile = Array.isArray(result.month_weekday_profile) ? result.month_weekday_profile : [];
+  let monthHeatmap = '';
+  if (monthProfile.length) {
+    const maximum = Math.max(...monthProfile.flatMap((row) => row.weekday_kwh), 0);
+    let cells = '<div></div>' + DAYS.map((day) => `<div class="heatmap-hour">${day}</div>`).join('');
+    monthProfile.forEach((row) => {
+      cells += `<div class="heatmap-day">${escapeHtml(monthLabel(row.month))}</div>`;
+      row.weekday_kwh.forEach((value, index) => {
+        const hasData = (row.weekday_sample_count?.[index] ?? 1) > 0;
+        const alpha = value > 0 && maximum > 0 ? Math.min(0.92, 0.12 + value / maximum * 0.8) : 0;
+        const style = alpha > 0 ? ` style="background:rgba(232,147,12,${alpha.toFixed(3)})"` : '';
+        const label = `${monthLabel(row.month)}, ${DAYS[index]} — ${hasData ? `${formatNumber(value, 2)} kWh` : 'brak statystyk'}`;
+        cells += `<div class="heatmap-cell month-heatmap-cell${hasData ? '' : ' no-data'}"${style} title="${escapeHtml(label)}" aria-label="${escapeHtml(label)}" tabindex="0">${hasData ? formatNumber(value, 1) : '—'}</div>`;
+      });
+    });
+    monthHeatmap = `<div class="card-head chart-heading"><h3>Zużycie według miesięcy i dni tygodnia</h3>
+        <span class="muted small">suma kWh dla każdego dnia tygodnia w miesiącu</span></div>
+      <div class="heatmap"><div class="heatmap-grid month-heatmap-grid">${cells}</div>
+        <div class="legend"><span>0 kWh</span><span class="legend-gradient"></span><span>${formatNumber(maximum, 2)} kWh</span><span>· — brak statystyk</span></div></div>`;
+  }
+
   const monthly = Array.isArray(result.monthly_kwh) ? result.monthly_kwh : [];
   let monthlyChart = '';
-  if (monthly.length > 1) {
+  if (monthly.length) {
     const monthlyMax = Math.max(...monthly.map((item) => Number(item.kwh) || 0), 0.01);
     const barsHtml = monthly.map((item) => {
       const [year, month] = String(item.month).split('-').map(Number);
@@ -713,6 +738,39 @@ function renderAnalysis(result) {
         <span class="muted small">kWh</span>
       </div>
       <div class="month-bars">${barsHtml}</div>`;
+  }
+
+  const monthlyCosts = Array.isArray(result.monthly_costs) ? result.monthly_costs : [];
+  let monthlyCostChart = '';
+  if (monthlyCosts.length && result.current_tariff_id && result.monthly_costs_basis === 'analysis') {
+    const maxCost = Math.max(...monthlyCosts.flatMap((row) => [row.current, row.recommended])
+      .filter((cost) => cost && cost.total_pln !== null).map((cost) => Number(cost.total_pln)), 0.01);
+    const costBars = monthlyCosts.map((row) => {
+      const bar = (cost, kind, label) => {
+        const available = cost && cost.total_pln !== null && !cost.error;
+        const title = available ? `${monthLabel(row.month)} — ${label}: ${cost.name}, ${formatPLN(cost.total_pln)} brutto` : `${monthLabel(row.month)} — ${label}: ${cost?.error || 'brak dostępnej taryfy'}`;
+        const height = available ? Math.max(0, Number(cost.total_pln) / maxCost * 100) : 0;
+        return `<div class="cost-bar-column" title="${escapeHtml(title)}" aria-label="${escapeHtml(title)}" tabindex="0">
+          <div class="cost-bar-track"><div class="cost-bar-fill ${kind}" style="height:${height.toFixed(3)}%"></div></div>
+          <span class="cost-bar-value">${available ? formatNumber(cost.total_pln, 2) : '—'}</span></div>`;
+      };
+      return `<div class="cost-month"><div class="cost-pair">${bar(row.current, 'current', 'Moja taryfa')}${bar(row.recommended, 'cheapest', 'Najtańsza taryfa')}</div>
+        <span class="cost-month-label">${escapeHtml(monthLabel(row.month))}</span></div>`;
+    }).join('');
+    const unavailable = monthlyCosts.filter((row) => row.unavailable_tariffs?.length).map((row) =>
+      `<li><strong>${escapeHtml(monthLabel(row.month))}</strong>: ${row.unavailable_tariffs.map((cost) => `${escapeHtml(cost.name)} — ${escapeHtml(cost.error)}`).join('; ')}</li>`).join('');
+    monthlyCostChart = `<div class="card-head chart-heading"><h3>Koszty miesięczne</h3><span class="muted small">pełny rachunek brutto · zł</span></div>
+      <div class="cost-legend"><span><i class="current"></i>Moja taryfa: ${escapeHtml(result.current_tariff_name)}</span>
+        <span><i class="cheapest"></i>Najtańsza w całej analizie: ${escapeHtml(result.cheapest_tariff_name)}</span></div>
+      <div class="cost-months">${costBars}</div>
+      <p class="muted small">Ta sama taryfa, najtańsza w całym okresie analizy, jest porównywana z Twoją obecną taryfą w każdym miesiącu. Opłaty stałe proporcjonalnie do dni w zakresie; próg mocowej z całej analizy.</p>
+      ${unavailable ? `<details class="monthly-cost-errors"><summary>Niepełne dane — porównanie obejmuje dostępne wyniki</summary><ul>${unavailable}</ul></details>` : ''}`;
+  } else if (monthlyCosts.length && result.monthly_costs_basis !== 'analysis') {
+    monthlyCostChart = '<p class="muted small chart-heading">Wykonaj analizę ponownie, aby porównać wszystkie miesiące z jedną taryfą, najtańszą w całym okresie.</p>';
+  } else if (monthlyCosts.length) {
+    monthlyCostChart = '<div class="card-head chart-heading"><h3>Koszty miesięczne</h3></div><p class="muted small">Wybierz obecną taryfę w zakładce Sensory i wykonaj nową analizę, aby porównać miesięczne koszty.</p>';
+  } else {
+    monthlyCostChart = '<p class="muted small chart-heading">Ta zapisana analiza nie zawiera nowych wykresów. Wykonaj ją ponownie, aby zobaczyć miesięczny profil i porównanie kosztów.</p>';
   }
 
   container.innerHTML = `
@@ -761,10 +819,12 @@ function renderAnalysis(result) {
     <section class="card">
       <div class="card-head">
         <h3>Profil zużycia</h3>
-        <span class="muted small">średnie zużycie w podziale na dzień tygodnia i godzinę</span>
+        <span class="muted small">suma zużycia w podziale na dzień tygodnia i godzinę</span>
       </div>
       ${heatmap || '<p class="muted small">Brak danych profilu.</p>'}
+      ${monthHeatmap}
       ${monthlyChart}
+      ${monthlyCostChart}
     </section>
 
     <p class="methodology">${escapeHtml(result.methodology || '')}</p>

@@ -1,5 +1,12 @@
 # Historia zmian
 
+## 0.4.1 — 15.11.2026
+
+- Heatmapa zużycia według miesięcy i dni tygodnia, z rozróżnieniem lat i brakujących statystyk.
+- Miesięczne porównanie pełnego kosztu brutto obecnej taryfy z Sensorów i najtańszej w całej analizie, z obiema nazwami w legendzie.
+- Porównanie uwzględnia obecną taryfę również poza zaznaczoną listą, częściowe miesiące i wspólny próg mocowej z całego okresu.
+- Wyniki miesięczne zapisują się w historii wraz z taryfą obowiązującą w chwili analizy.
+
 ## 0.4.0 — 15.11.2026
 
 - Nowa zakładka **Sensory** z trwałym wyborem obecnej taryfy.

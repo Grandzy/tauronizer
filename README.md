@@ -24,16 +24,15 @@ profilu zużycia — w wybranym okresie i w przeliczeniu na rok.
 
 Zrzut przedstawia dane demonstracyjne, a nie rzeczywiste zużycie użytkownika.
 
-## Nowości w 0.4.0
+## Nowości w 0.4.1
 
-- Zakładka **Sensory** z zapamiętywanym wyborem obecnej taryfy.
-- Encje MQTT Discovery: **`sensor.tauronizer_strefa`** i **`sensor.tauronizer_cena_kwh`**.
-- Cena za kWh obejmuje wszystkie składniki zmienne, z wyborem **netto/brutto**.
-- Preset **G14dynamic**: cztery strefy Kompasu PSE, objaśnienia S1–S4 oraz integracja z analizami i sensorami.
-- Trwałe lokalne archiwum Kompasu: import pełnej dostępnej historii, wznowienie po przerwaniu, aktualizacje przyrostowe i uzupełnianie luk.
-- Status archiwum w zakładce **Taryfy** i aktualny abonament **0 zł** w presetach.
+- Heatmapa zużycia według **miesięcy i dni tygodnia**, poniżej profilu godzinowego.
+- Pod zużyciem miesięcznym: **dwa słupki kosztów brutto** dla każdego miesiąca — obecna taryfa z Sensorów i taryfa najtańsza w całym analizowanym okresie.
+- Ta sama proponowana taryfa dla wszystkich miesięcy; obie nazwy w legendzie.
+- Uwzględnienie częściowych miesięcy, opłat stałych i wspólnego progu mocowej z całej analizy.
+- Nowe wykresy zapisują się w Historii. Starsze analizy trzeba wykonać ponownie.
 
-[Opis wydania 0.4.0](https://github.com/direk/tauronizer/releases/tag/v0.4.0)
+[Opis wydania 0.4.1](https://github.com/direk/tauronizer/releases/tag/v0.4.1)
 · [Historia zmian](tauronizer/CHANGELOG.md)
 
 ## Sensory — aktualna strefa przez MQTT
@@ -178,7 +177,7 @@ Kroki ręczne:
 Dodatek buduje obraz lokalnie na urządzeniu (nie wymaga gotowego obrazu w
 rejestrze). Obsługiwane architektury: `amd64` i `aarch64`.
 
-### Aktualizacja do 0.4.0
+### Aktualizacja do 0.4.1
 
 1. W sklepie dodatków odśwież repozytorium i otwórz **Tauronizer**.
 2. Wykonaj kopię zapasową dodatku, a następnie wybierz **Aktualizuj**.

@@ -221,3 +221,27 @@ ograniczyć panel do administratorów, ustaw `panel_admin: true` w
   pozaszczyt.
 - **Brak panelu w menu** — uruchom dodatek i odśwież stronę Home Assistant;
   sprawdź log dodatku.
+
+## Miesięczny profil i porównanie kosztów
+
+Pod profilem godzinowym znajduje się heatmapa sum zużycia dla każdej pary
+miesiąc–dzień tygodnia. Miesiące z różnych lat mają osobne wiersze. Pole „—”
+oznacza brak statystyk dla danej kombinacji, a 0 kWh oznacza dostępny odczyt zerowy.
+
+Pod zużyciem miesięcznym wykres kosztów pokazuje po dwa słupki na miesiąc:
+obecną taryfę zapisaną w **Sensorach** oraz najtańszą w całym analizowanym
+okresie spośród taryf wybranych do analizy. Jest to zwycięzca głównego rankingu
+i ta sama taryfa jest pokazywana we wszystkich miesiącach. Obie nazwy znajdują
+się w legendzie; pod słupkami są wyłącznie miesiące. Obecna taryfa jest uwzględniana nawet po odznaczeniu jej
+na liście porównania; nie zmienia to głównego rankingu zaznaczonych taryf.
+
+Kwoty obejmują cały rachunek brutto. Opłaty stałe są proporcjonalne do liczby
+dni objętych zakresem w miesiącu. Próg mocowej jest wspólny z całą analizą,
+więc nie zmienia się wskutek sezonowych wahań zużycia między miesiącami.
+Zaokrąglenia mogą dać groszowe różnice względem sumy za cały okres.
+
+Bez wybranej obecnej taryfy aplikacja prosi o ustawienie jej w Sensorach.
+Proponowana taryfa musi mieć dane dla całej analizy. Braki danych obecnej taryfy
+są oznaczane w odpowiednich miesiącach; przyczyny można rozwinąć pod wykresem. Miesiąc bez statystyk zużycia nie ma
+wyliczonego kosztu. Nowe wyniki zapisują wykresy i wybraną taryfę w historii.
+Starsze analizy wymagają ponownego wykonania, żeby otrzymać nowe wykresy.

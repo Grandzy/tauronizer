@@ -671,6 +671,28 @@ function bindChartTooltips() {
   window.addEventListener('resize', hide);
 }
 
+function bindInvoiceLegendHover() {
+  const findSegment = (target) => target instanceof Element ? target.closest('.invoice-donut-segment') : null;
+  const highlight = (segment, active) => {
+    const chart = segment.closest('.invoice-chart');
+    chart.querySelectorAll('.invoice-legend-item').forEach((row) => {
+      row.classList.toggle('is-highlighted', active && row.dataset.invoiceItem === segment.dataset.invoiceItem);
+    });
+  };
+  for (const eventName of ['pointerover', 'focusin']) {
+    document.addEventListener(eventName, (event) => {
+      const segment = findSegment(event.target);
+      if (segment) highlight(segment, true);
+    });
+  }
+  for (const eventName of ['pointerout', 'focusout']) {
+    document.addEventListener(eventName, (event) => {
+      const segment = findSegment(event.target);
+      if (segment && !segment.contains(event.relatedTarget)) highlight(segment, false);
+    });
+  }
+}
+
 function renderInvoiceDonut(tariff) {
   const breakdown = tariff.breakdown || {};
   const detailed = Array.isArray(breakdown.invoice_items);
@@ -691,13 +713,13 @@ function renderInvoiceDonut(tariff) {
     if (!item.amount || !sum) return '';
     const length = item.amount / sum * circumference;
     const title = `${item.name}: ${formatPLN(item.amount)} · ${formatNumber(item.amount / sum * 100, 2)}%`;
-    const arc = `<circle class="invoice-donut-segment" cx="110" cy="110" r="82" fill="none" stroke="${colors[index % colors.length]}"
+    const arc = `<circle class="invoice-donut-segment" data-invoice-item="${index}" tabindex="0" aria-label="${escapeHtml(title)}" cx="110" cy="110" r="82" fill="none" stroke="${colors[index % colors.length]}"
       stroke-width="30" stroke-dasharray="${length.toFixed(6)} ${circumference.toFixed(6)}" stroke-dashoffset="${(-offset).toFixed(6)}"
       transform="rotate(-90 110 110)"><title>${escapeHtml(title)}</title></circle>`;
     offset += length;
     return arc;
   }).join('');
-  const legend = items.map((item, index) => `<li class="invoice-legend-item${item.amount ? '' : ' is-zero'}">
+  const legend = items.map((item, index) => `<li class="invoice-legend-item${item.amount ? '' : ' is-zero'}" data-invoice-item="${index}" style="--invoice-color:${colors[index % colors.length]}">
     <span class="invoice-swatch" style="background:${colors[index % colors.length]}"></span>
     <span class="invoice-item-name">${escapeHtml(item.name)}</span>
     <strong>${formatPLN(item.amount)}</strong><span class="muted">${formatNumber(sum ? item.amount / sum * 100 : 0, 2)}%</span></li>`).join('');
@@ -1739,6 +1761,7 @@ async function init() {
   bindEvents();
   bindSensorEvents();
   bindChartTooltips();
+  bindInvoiceLegendHover();
   setDateRange(addDays(today(), -29), today());
 
   await loadConfig();

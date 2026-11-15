@@ -1934,6 +1934,9 @@ select.input {
 .invoice-swatch { width: 10px; height: 10px; border-radius: 3px; }
 .invoice-item-name { overflow-wrap: anywhere; }
 .invoice-legend-item.is-zero { opacity: .65; }
+.invoice-legend-item { transition: background-color .12s ease, box-shadow .12s ease; }
+.invoice-legend-item.is-highlighted { background: color-mix(in srgb, var(--invoice-color) 14%, var(--surface)); box-shadow: 0 0 0 1px color-mix(in srgb, var(--invoice-color) 45%, transparent); border-radius: 4px; }
+.invoice-donut-segment:focus-visible { opacity: .7; outline: none; }
 @media (max-width: 720px) {
   .invoice-chart-layout { grid-template-columns: minmax(0, 1fr); gap: 14px; }
   .invoice-legend-item { gap: 6px; font-size: 11px; grid-template-columns: 8px minmax(0, 1fr) auto 50px; }

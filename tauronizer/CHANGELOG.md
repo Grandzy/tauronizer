@@ -2,6 +2,7 @@
 
 ## Niewydane
 
+- Najechanie na wycinek wykresu pączkowego faktury podświetla odpowiadający mu wiersz legendy; działa także przy wyborze klawiaturą i osobno dla każdej taryfy.
 - Szersza tabela zużycia według stref i węższa kolumna składników rachunku; długie nazwy stref zawijają się zamiast wymuszać przewijanie poziome.
 
 ## 0.4.6 — 15.11.2026

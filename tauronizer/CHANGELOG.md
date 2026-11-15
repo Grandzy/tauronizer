@@ -2,6 +2,7 @@
 
 ## Niewydane
 
+- Wersja testowa ma osobne oznaczenie DEV w nazwie repozytorium, dodatku i panelu Home Assistant.
 - Najechanie na wycinek wykresu pączkowego faktury podświetla odpowiadający mu wiersz legendy; działa także przy wyborze klawiaturą i osobno dla każdej taryfy.
 - Szersza tabela zużycia według stref i węższa kolumna składników rachunku; długie nazwy stref zawijają się zamiast wymuszać przewijanie poziome.
 

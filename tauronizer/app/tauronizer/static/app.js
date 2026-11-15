@@ -607,6 +607,70 @@ function renderDataQuality(quality) {
     </details></section>`;
 }
 
+function bindChartTooltips() {
+  const tooltip = $('#chart-tooltip');
+  const tooltipValue = $('#chart-tooltip-value');
+  let anchor = null;
+  const hide = () => {
+    tooltip.hidden = true;
+    if (anchor) {
+      anchor.classList.remove('is-chart-active');
+      const describedBy = (anchor.getAttribute('aria-describedby') || '').split(' ').filter((id) => id && id !== tooltip.id);
+      if (describedBy.length) anchor.setAttribute('aria-describedby', describedBy.join(' '));
+      else anchor.removeAttribute('aria-describedby');
+    }
+    anchor = null;
+  };
+  const find = (target) => target instanceof Element ? target.closest('[data-chart-tooltip]') : null;
+  const show = (target, x, y) => {
+    if (!target || !target.dataset.chartTooltip) return hide();
+    if (anchor !== target) hide();
+    anchor = target;
+    tooltipValue.textContent = target.dataset.chartTooltip;
+    tooltip.style.setProperty('--tooltip-dot', target.dataset.chartColor === 'accent' ? 'var(--accent)' : 'var(--teal)');
+    target.classList.add('is-chart-active');
+    const describedBy = new Set((target.getAttribute('aria-describedby') || '').split(' ').filter(Boolean));
+    describedBy.add(tooltip.id);
+    target.setAttribute('aria-describedby', [...describedBy].join(' '));
+    tooltip.hidden = false;
+    const rect = tooltip.getBoundingClientRect();
+    const left = Math.max(8, Math.min(x + 12, window.innerWidth - rect.width - 8));
+    const top = y + rect.height + 20 > window.innerHeight ? Math.max(8, y - rect.height - 12) : y + 12;
+    tooltip.style.left = `${left}px`;
+    tooltip.style.top = `${top}px`;
+  };
+  document.addEventListener('pointerover', (event) => {
+    const target = find(event.target);
+    if (target) show(target, event.clientX, event.clientY);
+  });
+  document.addEventListener('pointermove', (event) => {
+    const target = find(event.target);
+    if (target) show(target, event.clientX, event.clientY);
+    else hide();
+  });
+  document.addEventListener('pointerout', (event) => {
+    const target = find(event.target);
+    if (target && !target.contains(event.relatedTarget)) hide();
+  });
+  document.addEventListener('focusin', (event) => {
+    const target = find(event.target);
+    if (target) {
+      const rect = target.getBoundingClientRect();
+      show(target, rect.left + rect.width / 2, rect.bottom);
+    } else hide();
+  });
+  document.addEventListener('focusout', hide);
+  document.addEventListener('keydown', (event) => { if (event.key === 'Escape') hide(); });
+  window.addEventListener('scroll', () => {
+    if (anchor && document.activeElement === anchor) {
+      const rect = anchor.getBoundingClientRect();
+      if (rect.bottom > 0 && rect.top < window.innerHeight) show(anchor, rect.left + rect.width / 2, rect.bottom);
+      else hide();
+    } else hide();
+  }, true);
+  window.addEventListener('resize', hide);
+}
+
 function renderInvoiceDonut(tariff) {
   const breakdown = tariff.breakdown || {};
   const detailed = Array.isArray(breakdown.invoice_items);
@@ -696,7 +760,7 @@ function renderAnalysis(result) {
       ? 'najtaniej'
       : `+${formatPLN(tariff.extra_cost_pln)}`;
     return `
-      <div class="bar-row ${tariff.rank === 1 ? 'is-best' : ''}">
+      <div class="bar-row ${tariff.rank === 1 ? 'is-best' : ''}" data-chart-tooltip="${escapeHtml(formatPLN(tariff.total_pln))}" data-chart-color="${tariff.rank === 1 ? 'accent' : 'teal'}" aria-label="${escapeHtml(`${tariff.name}: ${formatPLN(tariff.total_pln)} brutto · ${delta}`)}" tabindex="0">
         <div class="bar-label"><span class="rank">${tariff.rank}.</span> ${escapeHtml(tariff.name)}
           ${tariff.is_preset ? '<span class="badge subtle">preset</span>' : ''}
         </div>
@@ -783,9 +847,10 @@ function renderAnalysis(result) {
         const numeric = Number(value) || 0;
         const ratio = profileMax > 0 ? numeric / profileMax : 0;
         const alpha = numeric > 0 ? Math.min(0.92, 0.12 + ratio * 0.8) : 0;
-        const style = alpha > 0 ? ` style="background:rgba(232,147,12,${alpha.toFixed(3)})"` : '';
+        const style = ` style="--heatmap-color:rgba(232,147,12,${alpha.toFixed(3)});--heatmap-base:var(${alpha > 0 ? '--surface' : '--surface-3'});"`;
         const label = `${DAYS[dayIndex]} ${String(hour).padStart(2, '0')}:00 — ${formatNumber(numeric, 2)} kWh`;
-        cells += `<div class="heatmap-cell"${style} title="${escapeHtml(label)}"></div>`;
+        cells += `<div class="heatmap-cell profile-hour-cell" data-hour="${hour}"${style} aria-label="${escapeHtml(label)}" tabindex="0">
+          <span class="profile-cell-value" aria-hidden="true"><strong>${formatNumber(numeric, 2)}</strong></span></div>`;
       });
     });
     heatmap = `
@@ -813,7 +878,7 @@ function renderAnalysis(result) {
       row.weekday_kwh.forEach((value, index) => {
         const hasData = (row.weekday_sample_count?.[index] ?? 1) > 0;
         const alpha = value > 0 && maximum > 0 ? Math.min(0.92, 0.12 + value / maximum * 0.8) : 0;
-        const style = alpha > 0 ? ` style="background:rgba(232,147,12,${alpha.toFixed(3)})"` : '';
+        const style = ` style="--heatmap-color:rgba(232,147,12,${alpha.toFixed(3)});--heatmap-base:var(${alpha > 0 ? '--surface' : '--surface-3'});"`;
         const label = `${monthLabel(row.month)}, ${DAYS[index]} — ${hasData ? `${formatNumber(value, 2)} kWh` : 'brak statystyk'}`;
         cells += `<div class="heatmap-cell month-heatmap-cell${hasData ? '' : ' no-data'}"${style} title="${escapeHtml(label)}" aria-label="${escapeHtml(label)}" tabindex="0">${hasData ? formatNumber(value, 1) : '—'}</div>`;
       });
@@ -837,8 +902,8 @@ function renderAnalysis(result) {
       const label = new Date(year, month - 1, 1).toLocaleDateString('pl-PL', { month: 'short', year: '2-digit' });
       const height = Math.max(3, ((Number(item.kwh) || 0) / monthlyMax) * 100);
       const tooltip = escapeHtml(`${monthLabel(item.month)} — ${formatNumber(item.kwh, 2)} kWh${missingLabel(item.month)}`);
-      return `<div class="month-bar" title="${tooltip}" aria-label="${tooltip}" tabindex="0">
-        <div class="month-bar-track"><div class="month-bar-fill" title="${tooltip}" style="height:${height.toFixed(1)}%"></div></div>
+      return `<div class="month-bar" data-chart-tooltip="${escapeHtml(`${formatNumber(item.kwh, 2)} kWh`)}" data-chart-color="teal" aria-label="${tooltip}" tabindex="0">
+        <div class="month-bar-track"><div class="month-bar-fill" style="height:${height.toFixed(1)}%"></div></div>
         <span>${escapeHtml(label)}${monthWarning(item.month)}</span>
       </div>`;
     }).join('');
@@ -860,7 +925,7 @@ function renderAnalysis(result) {
         const available = cost && cost.total_pln !== null && !cost.error;
         const title = available ? `${monthLabel(row.month)} — ${label}: ${cost.name}, ${formatPLN(cost.total_pln)} brutto${missingLabel(row.month)}` : `${monthLabel(row.month)} — ${label}: ${cost?.error || 'brak dostępnej taryfy'}`;
         const height = available ? Math.max(0, Number(cost.total_pln) / maxCost * 100) : 0;
-        return `<div class="cost-bar-column" title="${escapeHtml(title)}" aria-label="${escapeHtml(title)}" tabindex="0">
+        return `<div class="cost-bar-column" data-chart-tooltip="${available ? escapeHtml(formatPLN(cost.total_pln)) : '— zł'}" data-chart-color="${kind === 'current' ? 'accent' : 'teal'}" aria-label="${escapeHtml(title)}" tabindex="0">
           <div class="cost-bar-track"><div class="cost-bar-fill ${kind}" style="height:${height.toFixed(3)}%"></div></div>
           <span class="cost-bar-value">${available ? formatNumber(cost.total_pln, 2) : '—'}</span></div>`;
       };
@@ -1673,6 +1738,7 @@ async function init() {
   bindTheme();
   bindEvents();
   bindSensorEvents();
+  bindChartTooltips();
   setDateRange(addDays(today(), -29), today());
 
   await loadConfig();

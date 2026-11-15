@@ -24,15 +24,14 @@ profilu zużycia — w wybranym okresie i w przeliczeniu na rok.
 
 Zrzut przedstawia dane demonstracyjne, a nie rzeczywiste zużycie użytkownika.
 
-## Nowości w 0.4.5
+## Nowości w 0.4.6
 
-- Raport kompletności godzin zużycia: procent dostępnych danych, podział na miesiące i lista luk; ostrzeżenia przy niepełnych miesiącach.
-- Harmonogram G14dynamic na dziś i jutro oraz sensor czasu następnej potwierdzonej zmiany strefy.
-- Sensory diagnostyki API Kompasu PSE: ostatnia aktualizacja danych i status połączenia.
-- Wykres pączkowy składników potencjalnej faktury w szczegółach każdej taryfy, z osobnymi opłatami, kwotami i udziałami procentowymi.
-- Węższe słupki kosztów miesięcznych i podpowiedzi z wartościami zużycia.
+- Minimalistyczne podpowiedzi na wykresach słupkowych: kropka w kolorze słupka i sama wartość z jednostką, bez dodatkowego tekstu.
+- Najechany lub wybrany klawiaturą słupek delikatnie się rozjaśnia. Podpowiedzi nie są ucinane przez przewijany wykres.
+- „Profil zużycia”: pole powiększa się i pokazuje skumulowaną wartość z dwoma miejscami po przecinku, bez jednostki, w kompaktowym okienku.
+- Ujednolicono nieprzezroczyste tła obu heatmap, także po powiększeniu; sąsiednie pola nie prześwitują przez aktywne pole.
 
-[Opis wydania 0.4.5](https://github.com/direk/tauronizer/releases/tag/v0.4.5)
+[Opis wydania 0.4.6](https://github.com/direk/tauronizer/releases/tag/v0.4.6)
 · [Historia zmian](tauronizer/CHANGELOG.md)
 
 ## Sensory — aktualna strefa przez MQTT
@@ -209,7 +208,7 @@ Kroki ręczne:
 Dodatek buduje obraz lokalnie na urządzeniu (nie wymaga gotowego obrazu w
 rejestrze). Obsługiwane architektury: `amd64` i `aarch64`.
 
-### Aktualizacja do 0.4.5
+### Aktualizacja do 0.4.6
 
 1. W sklepie dodatków odśwież repozytorium i otwórz **Tauronizer**.
 2. Wykonaj kopię zapasową dodatku, a następnie wybierz **Aktualizuj**.

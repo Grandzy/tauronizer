@@ -1,5 +1,12 @@
 # Historia zmian
 
+## 0.4.6 — 15.11.2026
+
+- Minimalistyczne podpowiedzi na wykresach słupkowych: kropka w kolorze słupka i sama wartość z jednostką, bez dodatkowego tekstu.
+- Najechany lub wybrany klawiaturą słupek delikatnie się rozjaśnia. Podpowiedzi nie są ucinane przez przewijany wykres.
+- „Profil zużycia”: pole powiększa się i pokazuje skumulowaną wartość z dwoma miejscami po przecinku, bez jednostki, w kompaktowym okienku.
+- Ujednolicono nieprzezroczyste tła obu heatmap, także po powiększeniu; sąsiednie pola nie prześwitują przez aktywne pole.
+
 ## 0.4.5 — 15.11.2026
 
 - Węższe słupki kosztów miesięcznych i podpowiedzi z wartościami zużycia po najechaniu na słupek.

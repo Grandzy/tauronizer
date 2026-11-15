@@ -909,9 +909,22 @@ select.input {
 
 .details-columns {
   display: grid;
-  grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr);
+  grid-template-columns: minmax(0, 2fr) minmax(250px, 1fr);
   gap: 22px;
   padding-top: 14px;
+}
+
+.details-columns > div {
+  min-width: 0;
+}
+
+.details-columns .data-table th {
+  white-space: normal;
+}
+
+.details-columns .data-table td:first-child {
+  white-space: normal;
+  overflow-wrap: anywhere;
 }
 
 .details-body h4 {
@@ -980,6 +993,8 @@ select.input {
 }
 
 .breakdown dd {
+  flex-shrink: 0;
+  white-space: nowrap;
   font-variant-numeric: tabular-nums;
   text-align: right;
 }

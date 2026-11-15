@@ -1,5 +1,9 @@
 # Historia zmian
 
+## Niewydane
+
+- Szersza tabela zużycia według stref i węższa kolumna składników rachunku; długie nazwy stref zawijają się zamiast wymuszać przewijanie poziome.
+
 ## 0.4.6 — 15.11.2026
 
 - Minimalistyczne podpowiedzi na wykresach słupkowych: kropka w kolorze słupka i sama wartość z jednostką, bez dodatkowego tekstu.

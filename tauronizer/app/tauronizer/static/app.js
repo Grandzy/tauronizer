@@ -7,7 +7,7 @@
 const DAYS = ['Pn', 'Wt', 'Śr', 'Cz', 'Pt', 'So', 'Nd'];
 const MONTHS = ['Sty', 'Lut', 'Mar', 'Kwi', 'Maj', 'Cze', 'Lip', 'Sie', 'Wrz', 'Paź', 'Lis', 'Gru'];
 const MONTHS_FULL = ['styczeń', 'luty', 'marzec', 'kwiecień', 'maj', 'czerwiec', 'lipiec', 'sierpień', 'wrzesień', 'październik', 'listopad', 'grudzień'];
-const QUICK_TABS = new Set(['analysis', 'tariffs', 'history', 'sensors']);
+const QUICK_TABS = new Set(['analysis', 'tariffs', 'history', 'settings']);
 
 const state = {
   config: null,
@@ -173,6 +173,7 @@ function toast(message, type = 'info', duration = 5000) {
 /* ------------------------------------------------------------------ tabs */
 
 function switchTab(tab) {
+  if (tab === 'sensors') tab = 'settings'; // Preserve existing bookmarks.
   if (!QUICK_TABS.has(tab)) tab = 'analysis';
   $$('.tab-button').forEach((button) => {
     button.classList.toggle('is-active', button.dataset.tab === tab);
@@ -187,7 +188,7 @@ function switchTab(tab) {
   }
   if (tab === 'tariffs') loadKompas();
   if (tab === 'history') loadHistory();
-  if (tab === 'sensors') loadSensors();
+  if (tab === 'settings') loadSensors();
 }
 
 function renderSensorTariffs() {
@@ -255,7 +256,7 @@ async function loadDynamicSchedule() {
       return end ? label.replace(/^00:00/, '24:00') : label;
     };
     container.innerHTML = `<p class="muted small">${escapeHtml(plan.tariff_name || 'Brak taryfy G14dynamic')}
-      ${plan.is_current_tariff ? '· Twoja obecna taryfa' : '· podgląd; sensor następnej zmiany korzysta z taryfy wybranej w Sensorach'}</p>
+      ${plan.is_current_tariff ? '· Twoja obecna taryfa' : '· podgląd; sensor następnej zmiany korzysta z taryfy wybranej w Ustawieniach'}</p>
       <div class="schedule-days">${(plan.days || []).map((day) => `<section class="schedule-day">
         <h4>${formatDate(day.date)}</h4><p class="muted small">${day.available_hours}/${day.expected_hours} opublikowanych godzin${day.complete ? '' : ' · niepełne dane'}</p>
         <ol class="schedule-segments">${day.segments.map((segment) => `<li class="schedule-segment zone-level-${segment.level ?? 'missing'}">
@@ -301,7 +302,7 @@ function bindSensorEvents() {
     finally { button.disabled = false; }
   });
   window.setInterval(() => {
-    if (!document.hidden && !$('#tab-sensors').hidden && !$('#sensor-save').disabled) loadSensors();
+    if (!document.hidden && !$('#tab-settings').hidden && !$('#sensor-save').disabled) loadSensors();
   }, 5000);
 }
 
@@ -425,7 +426,16 @@ async function loadEntities() {
   }
 }
 
+function updateAnalysisSource() {
+  const select = $('#entity-select');
+  const entity = state.entities.find(item => item.entity_id === select.value);
+  const label = entity?.name || select.value || 'Wybierz licznik energii w ustawieniach';
+  const mode = $('#prosumer-mode');
+  $('#analysis-source').textContent = `${label}${mode.value !== 'off' ? ` · ${mode.selectedOptions[0].textContent}` : ''}`;
+}
+
 function updateEntityHint() {
+  updateAnalysisSource();
   const select = $('#entity-select');
   const hint = $('#entity-hint');
   const entity = state.entities.find((item) => item.entity_id === select.value);
@@ -539,6 +549,7 @@ function setAnalyzing(busy) {
 
 function syncProsumerFields() {
   const mode = $('#prosumer-mode').value;
+  updateAnalysisSource();
   $('#prosumer-options').hidden = mode === 'off';
   $('#prosumer-export-field').hidden = mode === 'off';
   $('#prosumer-ratio-field').hidden = mode !== 'net_metering';
@@ -647,13 +658,17 @@ async function handleAnalyze(event) {
   const end = $('#date-end').value;
   const tariffIds = Array.from(state.selectedTariffs);
 
-  if (!entityId) return toast('Wybierz encję zużycia energii.', 'error');
+  if (!entityId) {
+    switchTab('settings');
+    $('#entity-select').focus();
+    return toast('Wybierz encję zużycia energii w ustawieniach.', 'error');
+  }
   if (!start || !end) return toast('Uzupełnij zakres dat.', 'error');
   if (start > end) return toast('Data początkowa jest późniejsza niż końcowa.', 'error');
   if (!tariffIds.length) return toast('Zaznacz co najmniej jedną taryfę.', 'error');
 
   let prosumer;
-  try { prosumer = readProsumerSettings(); } catch (error) { return toast(error.message, 'error'); }
+  try { prosumer = readProsumerSettings(); } catch (error) { switchTab('settings'); return toast(error.message, 'error'); }
   setAnalyzing(true);
   const status = $('#analyze-status');
   const startedAt = Date.now();
@@ -1069,7 +1084,7 @@ function renderAnalysis(result) {
   } else if (monthlyCosts.length && result.monthly_costs_basis !== 'analysis') {
     monthlyCostChart = '<p class="muted small chart-heading">Wykonaj analizę ponownie, aby porównać wszystkie miesiące z jedną taryfą, najtańszą w całym okresie.</p>';
   } else if (monthlyCosts.length) {
-    monthlyCostChart = '<div class="card-head chart-heading"><h3>Koszty miesięczne</h3></div><p class="muted small">Wybierz obecną taryfę w zakładce Sensory i wykonaj nową analizę, aby porównać miesięczne koszty.</p>';
+    monthlyCostChart = '<div class="card-head chart-heading"><h3>Koszty miesięczne</h3></div><p class="muted small">Wybierz obecną taryfę w zakładce Ustawienia i wykonaj nową analizę, aby porównać miesięczne koszty.</p>';
   } else {
     monthlyCostChart = '<p class="muted small chart-heading">Ta zapisana analiza nie zawiera nowych wykresów. Wykonaj ją ponownie, aby zobaczyć miesięczny profil i porównanie kosztów.</p>';
   }
@@ -1769,15 +1784,6 @@ function renderHistory() {
     </article>`).join('');
 }
 
-function ensureEntityOption(entityId, name) {
-  const select = $('#entity-select');
-  if (Array.from(select.options).some((option) => option.value === entityId)) return;
-  const option = document.createElement('option');
-  option.value = entityId;
-  option.textContent = `${name || entityId} — ${entityId}`;
-  select.appendChild(option);
-}
-
 async function handleHistoryAction(event) {
   const openButton = event.target.closest('button[data-open]');
   const deleteButton = event.target.closest('button[data-delete]');
@@ -1792,13 +1798,10 @@ async function handleHistoryAction(event) {
       result.created_at = record.created_at;
       state.analysis = result;
 
-      ensureEntityOption(result.entity_id, result.entity_name);
-      $('#entity-select').value = result.entity_id;
       $('#date-start').value = result.start;
       $('#date-end').value = result.end;
       $$('#quick-ranges button').forEach((button) => button.classList.remove('is-active'));
       updateEntityHint();
-      applyProsumerSettings(result.prosumer?.settings || {mode:'off'});
 
       renderAnalysis(result);
       switchTab('analysis');
@@ -1835,7 +1838,11 @@ function bindEvents() {
   });
 
   $('#analysis-form').addEventListener('submit', handleAnalyze);
-  $('#entity-select').addEventListener('change', updateEntityHint);
+  $('#analysis-open-settings').addEventListener('click', () => switchTab('settings'));
+  $('#entity-select').addEventListener('change', () => {
+    updateEntityHint();
+    try { localStorage.setItem('tauronizer-entity', $('#entity-select').value); } catch (error) { /* ignore */ }
+  });
   bindDateControls();
   bindTariffChips();
   bindModalEvents();
@@ -1877,7 +1884,7 @@ async function init() {
   await loadHistory();
 
   const hash = window.location.hash.replace('#', '');
-  if (QUICK_TABS.has(hash)) switchTab(hash);
+  if (QUICK_TABS.has(hash) || hash === 'sensors') switchTab(hash);
 }
 
 document.addEventListener('DOMContentLoaded', init);

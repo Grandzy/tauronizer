@@ -20,7 +20,7 @@ zużycia dzień tygodnia × godzina. Analiza zapisuje się automatycznie w
 
 1. Skonfiguruj broker oraz integrację **MQTT** w Home Assistant. Włącz MQTT Discovery
    ze standardowym prefiksem `homeassistant`.
-2. W Tauronizerze otwórz **Sensory**, wybierz obecną taryfę spośród zdefiniowanych
+2. W Tauronizerze otwórz **Ustawienia**, wybierz obecną taryfę spośród zdefiniowanych
    w zakładce **Taryfy** i kliknij **Zapisz i opublikuj**.
 3. W Home Assistant w integracji MQTT pojawi się urządzenie **Tauronizer**
    z encją `sensor.tauronizer_strefa`. Zajęty lub ręcznie zmieniony identyfikator
@@ -52,7 +52,7 @@ w automatyzacjach.
 ### Sensor aktualnej ceny kWh
 
 `sensor.tauronizer_cena_kwh` publikuje liczbę w jednostce `PLN/kWh`, dla tej samej
-obecnej taryfy i strefy co `sensor.tauronizer_strefa`. W zakładce **Sensory** wybierz
+obecnej taryfy i strefy co `sensor.tauronizer_strefa`. W zakładce **Ustawienia** wybierz
 **Brutto — z VAT** (domyślnie) lub **Netto — bez VAT**, a następnie zapisz ustawienia.
 Wybór jest zapamiętywany po restarcie.
 
@@ -229,7 +229,7 @@ miesiąc–dzień tygodnia. Miesiące z różnych lat mają osobne wiersze. Pole
 oznacza brak statystyk dla danej kombinacji, a 0 kWh oznacza dostępny odczyt zerowy.
 
 Pod zużyciem miesięcznym wykres kosztów pokazuje po dwa słupki na miesiąc:
-obecną taryfę zapisaną w **Sensorach** oraz najtańszą w całym analizowanym
+obecną taryfę zapisaną w **Ustawieniach** oraz najtańszą w całym analizowanym
 okresie spośród taryf wybranych do analizy. Jest to zwycięzca głównego rankingu
 i ta sama taryfa jest pokazywana we wszystkich miesiącach. Obie nazwy znajdują
 się w legendzie; pod słupkami są wyłącznie miesiące. Obecna taryfa jest uwzględniana nawet po odznaczeniu jej
@@ -240,7 +240,7 @@ dni objętych zakresem w miesiącu. Próg mocowej jest wspólny z całą analiz�
 więc nie zmienia się wskutek sezonowych wahań zużycia między miesiącami.
 Zaokrąglenia mogą dać groszowe różnice względem sumy za cały okres.
 
-Bez wybranej obecnej taryfy aplikacja prosi o ustawienie jej w Sensorach.
+Bez wybranej obecnej taryfy aplikacja prosi o ustawienie jej w Ustawieniach.
 Proponowana taryfa musi mieć dane dla całej analizy. Braki danych obecnej taryfy
 są oznaczane w odpowiednich miesiącach; przyczyny można rozwinąć pod wykresem. Miesiąc bez statystyk zużycia nie ma
 wyliczonego kosztu. Nowe wyniki zapisują wykresy i wybraną taryfę w historii.
@@ -275,7 +275,7 @@ ale ma osobne tematy dostępności. Publikacja jest ponawiana co 30 sekund,
 bez zatrzymywania ostatniego stanu przez broker; konfiguracja Discovery jest
 zatrzymywana. Po 90 sekundach bez publikacji obie encje stają się niedostępne,
 a przy poprawnym zamknięciu dodatku są od razu oznaczane jako niedostępne.
-Stan i czas ostatniego sprawdzenia można odczytać także w zakładce Sensory.
+Stan i czas ostatniego sprawdzenia można odczytać także w zakładce Ustawienia.
 
 
 ## Kompletność danych zużycia
@@ -301,7 +301,7 @@ Starsze zapisane analizy wymagają ponownego wykonania, aby zawierały ten rapor
 
 ## Harmonogram G14dynamic i następna zmiana strefy
 
-W Sensorach znajduje się harmonogram opublikowanych stref na dziś i jutro,
+W Ustawieniach znajduje się harmonogram opublikowanych stref na dziś i jutro,
 odczytywany wyłącznie z lokalnej bazy Kompasu PSE. Kolejne godziny tej samej strefy
 są łączone w przedziały. Widać nazwy stref, pełne ceny zmienne brutto (jak sensor
 ceny za kWh, bez opłat miesięcznych) i braki danych. Zmiana czasu jest uwzględniona,
@@ -313,7 +313,7 @@ Brak jutra może oznaczać brak publikacji lub nieukończony import. API PSE mo�
 korygować dane; harmonogram i sensor są odświeżane po aktualizacji lokalnej bazy.
 
 `sensor.tauronizer_nastepna_zmiana_strefy` działa dla obecnej taryfy G14dynamic
-wybranej w Sensorach. Ma klasę timestamp i stan będący czasem następnej zmiany
+wybranej w Ustawieniach. Ma klasę timestamp i stan będący czasem następnej zmiany
 poziomu S1–S4 w opublikowanym harmonogramie dziś/jutro. Atrybuty: `tariff_id`,
 `tariff_name`, `next_zone`, `next_zone_id`, `next_level` (0–3) i `next_price_gross`.
 Jest publikowany przez MQTT Discovery na urządzeniu Tauronizer, niezależnie od

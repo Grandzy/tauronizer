@@ -44,7 +44,7 @@ Zrzut przedstawia dane demonstracyjne, a nie rzeczywiste zużycie użytkownika.
 
 1. Skonfiguruj broker oraz integrację **MQTT** w Home Assistant. Włącz MQTT Discovery
    ze standardowym prefiksem `homeassistant`.
-2. W Tauronizerze otwórz **Sensory**, wybierz obecną taryfę spośród zdefiniowanych
+2. W Tauronizerze otwórz **Ustawienia**, wybierz obecną taryfę spośród zdefiniowanych
    w zakładce **Taryfy** i kliknij **Zapisz i opublikuj**.
 3. W Home Assistant w integracji MQTT pojawi się urządzenie **Tauronizer**
    z encją `sensor.tauronizer_strefa`. Zajęty lub ręcznie zmieniony identyfikator
@@ -82,7 +82,7 @@ jest zmiana czasu, a godziny trwające i przyszłe nie są brakami. Brakującego
 zużycia nie uzupełniamy szacunkiem; koszty i ranking mogą być mniej miarodajne.
 Raport zapisuje się w Historii; starsze analizy należy wykonać ponownie.
 
-W **Sensorach** dostępny jest harmonogram stref G14dynamic na dziś i jutro,
+W **Ustawieniach** dostępny jest harmonogram stref G14dynamic na dziś i jutro,
 z nazwami, zmiennymi cenami brutto oraz oznaczeniem nieopublikowanych godzin.
 Dla obecnej taryfy G14dynamic sensor `sensor.tauronizer_nastepna_zmiana_strefy`
 publikuje czas następnej potwierdzonej zmiany i atrybut `next_zone` z nazwą
@@ -100,7 +100,7 @@ Automatycznie publikowane są także:
   jest niedostępny; po 30 minutach bez sprawdzenia przyjmuje false.
 
 Dla G14dynamic źródłem jest **PSE, nie TAURON API**. Status nie oznacza kompletności
-historii ani dostępności MQTT. Diagnostyka jest widoczna w Sensorach i publikuje się
+historii ani dostępności MQTT. Diagnostyka jest widoczna w Ustawieniach i publikuje się
 nawet bez wybranej taryfy, co 30 sekund. Po 90 sekundach bez publikacji encje są
 niedostępne. Sprawdzanie API odbywa się podczas synchronizacji (zwykle co 15 minut,
 po błędzie co minutę). Szczegóły: [dokumentacja](tauronizer/DOCS.md#diagnostyka-api-taryfy-dynamicznej).
@@ -108,7 +108,7 @@ po błędzie co minutę). Szczegóły: [dokumentacja](tauronizer/DOCS.md#diagnos
 ### Sensor aktualnej ceny kWh
 
 `sensor.tauronizer_cena_kwh` publikuje liczbę w jednostce `PLN/kWh`, dla tej samej
-obecnej taryfy i strefy co `sensor.tauronizer_strefa`. W zakładce **Sensory** wybierz
+obecnej taryfy i strefy co `sensor.tauronizer_strefa`. W zakładce **Ustawienia** wybierz
 **Brutto — z VAT** (domyślnie) lub **Netto — bez VAT**, a następnie zapisz ustawienia.
 Wybór jest zapamiętywany po restarcie.
 
@@ -228,7 +228,7 @@ rejestrze). Obsługiwane architektury: `amd64` i `aarch64`.
    włączasz jej naliczanie w nowej sekcji.
 5. W zakładce **Taryfy** sprawdź postęp importu Kompasu PSE; historia jest pobierana w tle.
    G14dynamic będzie uwzględniana, gdy baza zawiera wszystkie godziny potrzebne do analizy.
-6. Jeśli korzystasz z MQTT, w zakładce **Sensory** wybierz obecną taryfę i tryb ceny netto/brutto.
+6. Jeśli korzystasz z MQTT, w zakładce **Ustawienia** wybierz obecną taryfę i tryb ceny netto/brutto.
 7. Wykonaj nową analizę; zapisane wcześniej wyniki nie są przeliczane.
 
 ### Uprawnienia

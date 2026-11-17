@@ -18,8 +18,8 @@
       }
     })();
   </script>
-  <link rel="stylesheet" href="static/styles.css?v=0.4.7-prosumer">
-  <script defer src="static/app.js?v=0.4.7-prosumer"></script>
+  <link rel="stylesheet" href="static/styles.css?v=0.4.8-settings">
+  <script defer src="static/app.js?v=0.4.8-settings"></script>
 </head>
 <body>
   <header class="topbar">
@@ -57,9 +57,9 @@
       <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><circle cx="12" cy="12" r="9"></circle><path d="M12 7v5l3 2"></path></svg>
       Historia
     </button>
-    <button class="tab-button" type="button" data-tab="sensors">
+    <button class="tab-button" type="button" data-tab="settings">
       <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><circle cx="12" cy="12" r="3"></circle><path d="M7 7a7 7 0 0 0 0 10M17 7a7 7 0 0 1 0 10M4 4a11 11 0 0 0 0 16M20 4a11 11 0 0 1 0 16"></path></svg>
-      Sensory
+      Ustawienia
     </button>
   </nav>
 
@@ -70,19 +70,12 @@
         <div class="section-head compact">
           <div>
             <h2>Nowa analiza</h2>
-            <p class="muted">Wybierz licznik energii i okres, dla którego Home Assistant ma statystyki długoterminowe.</p>
+            <p class="muted">Wybierz okres i taryfy do porównania. Liczniki i sposób rozliczenia możesz zmienić w ustawieniach.</p>
           </div>
         </div>
 
-        <div class="grid-2">
-          <label class="field">
-            <span class="field-label">Encja zużycia energii</span>
-            <select id="entity-select" class="input" required>
-              <option value="">Ładowanie encji…</option>
-            </select>
-            <span class="field-hint" id="entity-hint">Szukam sensorów energii w Home Assistant.</span>
-          </label>
-
+        <div class="analysis-source"><span id="analysis-source" class="muted small">Wczytywanie ustawień liczników…</span><button type="button" class="link-button" id="analysis-open-settings">Zmień w ustawieniach</button></div>
+        <div>
           <div class="field">
             <span class="field-label">Zakres dat</span>
             <div class="date-row">
@@ -102,39 +95,6 @@
             </div>
           </div>
         </div>
-
-        <details class="prosumer-settings details">
-          <summary>Prosument <span class="muted small">pobór i eksport do sieci</span></summary>
-          <div class="details-body">
-            <div class="grid-2">
-              <label class="field"><span class="field-label">Sposób rozliczenia</span>
-                <select id="prosumer-mode" class="input">
-                  <option value="off">Bez rozliczenia prosumenta</option>
-                  <option value="net_metering">Net-metering — opusty</option>
-                  <option value="rcem">Net-billing — RCEm (cena miesięczna)</option>
-                  <option value="rce">Net-billing — RCE (ceny okresowe)</option>
-                </select>
-              </label>
-              <label class="field" id="prosumer-export-field" hidden><span class="field-label">Encja eksportu do sieci</span>
-                <select id="prosumer-export" class="input"><option value="">Wybierz encję…</option></select>
-              </label>
-            </div>
-            <div id="prosumer-options" hidden>
-              <p class="muted small">Główna encja analizy musi mierzyć <strong>pobór z sieci</strong>, a druga — eksport do sieci. Wybierz liczniki energii (kWh), nie moc chwilową ani całkowitą produkcję PV.</p>
-              <label class="field" id="prosumer-ratio-field"><span class="field-label">Współczynnik opustu</span>
-                <select id="prosumer-ratio" class="input"><option value="0.8">0,8 — instalacja do 10 kW</option><option value="0.7">0,7 — instalacja powyżej 10 kW</option></select>
-              </label>
-              <p class="muted small" id="prosumer-mode-help"></p>
-              <h4>Saldo początkowe <span id="prosumer-balance-unit" class="muted small"></span></h4>
-              <p class="muted small">Opcjonalnie wpisz pozostałe saldo z faktury, w osobnych wierszach dla miesięcy. Bez niego przyjmiemy 0. Dla opustów wpisz kWh już po współczynniku 0,8/0,7 i miesiąc eksportu; dla depozytu — zł i miesiąc przypisania do konta. W opustach miesiąc eksportu musi poprzedzać miesiąc analizy; depozyt może być przypisany również w miesiącu rozpoczęcia.</p>
-              <div id="prosumer-balances"></div>
-              <button type="button" class="button ghost" id="prosumer-add-balance">+ Dodaj miesiąc salda</button>
-              <p id="prosumer-price-status" class="muted small" role="status"></p>
-              <button type="button" class="link-button" id="prosumer-refresh-prices">Odśwież ceny PSE</button>
-            </div>
-            <div class="form-actions"><button type="button" class="button ghost" id="prosumer-save">Zapisz ustawienia prosumenta</button><span class="muted small" id="prosumer-save-status" role="status"></span></div>
-          </div>
-        </details>
 
         <div class="field">
           <div class="field-head">
@@ -161,7 +121,7 @@
           <h3>Sprawdź, która taryfa jest dla Ciebie najtańsza</h3>
           <p class="muted">Tauronizer pobierze godzinowe zużycie energii z Home Assistant i przeliczy je przez stawki energii, dystrybucji, opłat stałych, akcyzy i VAT dla każdej taryfy.</p>
           <ol class="steps">
-            <li><span>1</span> Wybierz encję licznika energii.</li>
+            <li><span>1</span> Wybierz licznik w zakładce „Ustawienia”.</li>
             <li><span>2</span> Ustaw zakres dat — im dłuższy, tym lepsza prognoza.</li>
             <li><span>3</span> Porównaj koszty i przejdź do szczegółów rachunku.</li>
           </ol>
@@ -209,9 +169,54 @@
       </div>
     </section>
 
-    <section id="tab-sensors" class="tab-panel" hidden>
-      <div class="section-head"><div><h2>Sensory</h2>
-        <p class="muted">Twoja taryfa, aktualna strefa, cena energii i diagnostyka API w Home Assistant.</p></div></div>
+    <section id="tab-settings" class="tab-panel" hidden>
+      <div class="section-head"><div><h2>Ustawienia</h2>
+        <p class="muted">Liczniki energii, rozliczenie prosumenta i sensory w Home Assistant.</p></div></div>
+      <article class="card analysis-form">
+        <h3>Dane do analizy</h3>
+          <label class="field">
+            <span class="field-label">Encja zużycia energii</span>
+            <select id="entity-select" class="input" required>
+              <option value="">Ładowanie encji…</option>
+            </select>
+            <span class="field-hint" id="entity-hint">Szukam sensorów energii w Home Assistant.</span>
+          </label>
+        <p class="muted small">Wybrany licznik będzie używany w kolejnych analizach. Dla prosumenta wybierz pobór z sieci.</p>
+      </article>
+        <article class="card analysis-form prosumer-settings">
+          <h3>Prosument</h3>
+          <div>
+            <div class="grid-2">
+              <label class="field"><span class="field-label">Sposób rozliczenia</span>
+                <select id="prosumer-mode" class="input">
+                  <option value="off">Bez rozliczenia prosumenta</option>
+                  <option value="net_metering">Net-metering — opusty</option>
+                  <option value="rcem">Net-billing — RCEm (cena miesięczna)</option>
+                  <option value="rce">Net-billing — RCE (ceny okresowe)</option>
+                </select>
+              </label>
+              <label class="field" id="prosumer-export-field" hidden><span class="field-label">Encja eksportu do sieci</span>
+                <select id="prosumer-export" class="input"><option value="">Wybierz encję…</option></select>
+              </label>
+            </div>
+            <div id="prosumer-options" hidden>
+              <p class="muted small">Główna encja analizy musi mierzyć <strong>pobór z sieci</strong>, a druga — eksport do sieci. Wybierz liczniki energii (kWh), nie moc chwilową ani całkowitą produkcję PV.</p>
+              <label class="field" id="prosumer-ratio-field"><span class="field-label">Współczynnik opustu</span>
+                <select id="prosumer-ratio" class="input"><option value="0.8">0,8 — instalacja do 10 kW</option><option value="0.7">0,7 — instalacja powyżej 10 kW</option></select>
+              </label>
+              <p class="muted small" id="prosumer-mode-help"></p>
+              <h4>Saldo początkowe <span id="prosumer-balance-unit" class="muted small"></span></h4>
+              <p class="muted small">Opcjonalnie wpisz pozostałe saldo z faktury, w osobnych wierszach dla miesięcy. Bez niego przyjmiemy 0. Dla opustów wpisz kWh już po współczynniku 0,8/0,7 i miesiąc eksportu; dla depozytu — zł i miesiąc przypisania do konta. W opustach miesiąc eksportu musi poprzedzać miesiąc analizy; depozyt może być przypisany również w miesiącu rozpoczęcia.</p>
+              <div id="prosumer-balances"></div>
+              <button type="button" class="button ghost" id="prosumer-add-balance">+ Dodaj miesiąc salda</button>
+              <p id="prosumer-price-status" class="muted small" role="status"></p>
+              <button type="button" class="link-button" id="prosumer-refresh-prices">Odśwież ceny PSE</button>
+            </div>
+            <div class="form-actions"><button type="button" class="button ghost" id="prosumer-save">Zapisz ustawienia prosumenta</button><span class="muted small" id="prosumer-save-status" role="status"></span></div>
+          </div>
+        </article>
+      <div class="section-head"><div><h3>Sensory Home Assistant</h3>
+        <p class="muted">Twoja taryfa, aktualna strefa, cena energii i diagnostyka API.</p></div></div>
       <form id="sensor-settings" class="card analysis-form">
         <label class="field" for="sensor-tariff"><span class="field-label">Moja obecna taryfa</span>
           <select class="input" id="sensor-tariff"><option value="">Nie publikuj strefy i ceny</option></select>
@@ -254,7 +259,7 @@
         <p><code>sensor.tauronizer_nastepna_zmiana_strefy</code></p>
         <dl class="sensor-values"><dt>Następna opublikowana zmiana</dt><dd id="sensor-next-change">—</dd>
           <dt>Publikacja MQTT</dt><dd id="sensor-next-mqtt">—</dd></dl>
-        <p class="muted small">Sensor działa dla obecnej taryfy G14dynamic wybranej w Sensorach. Publikuje czas zmiany
+        <p class="muted small">Sensor działa dla obecnej taryfy G14dynamic wybranej w Ustawieniach. Publikuje czas zmiany
           oraz nazwę następnej strefy w atrybucie next_zone. Zmiana po luce w danych nie jest zgadywana;
           bez potwierdzonego czasu sensor pozostaje niedostępny. Harmonogram korzysta wyłącznie z lokalnej bazy Kompasu PSE.</p>
       </article>

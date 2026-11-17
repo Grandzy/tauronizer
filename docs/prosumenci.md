@@ -1,11 +1,12 @@
 # Prosument w Tauronizerze (DEV)
 
-W formularzu **Analiza → Prosument** wybierz sposób rozliczenia i encję eksportu.
-Główna encja analizy musi mierzyć **pobór z sieci**, druga **oddawanie do sieci**.
+W sekcji **Ustawienia → Prosument** wybierz sposób rozliczenia i encję eksportu.
+W **Ustawienia → Dane do analizy** wybierz licznik poboru z sieci.
+W sekcji prosumenta wybierz drugi licznik — oddawania energii do sieci.
 Obie muszą być licznikami energii z godzinowymi statystykami Home Assistant.
 Nie wybieraj całkowitego zużycia domu, produkcji falownika ani mocy chwilowej.
 Przycisk **Zapisz ustawienia prosumenta** zachowuje wybór w dodatku. Analiza używa
-aktualnych ustawień formularza, a jej historia zachowuje kopię tych ustawień.
+aktualnej konfiguracji z zakładki Ustawienia, a jej historia zachowuje kopię tych ustawień.
 
 Dostępne tryby: wyłączony, net-metering z opustem 0,8 lub 0,7, net-billing RCEm
 i net-billing RCE. Wybór jest niezależny od taryfy poboru. Dostępność danego

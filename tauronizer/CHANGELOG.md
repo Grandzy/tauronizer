@@ -2,6 +2,8 @@
 
 ## Niewydane
 
+- Zakładka „Ustawienia” zastępuje „Sensory”: na górze wybór licznika energii i konfiguracja prosumenta, poniżej ustawienia i statusy sensorów Home Assistant. Analiza zawiera zakres dat, wybór taryf i podsumowanie używanych ustawień.
+
 - Obsługa prosumentów: net-metering 0,8/0,7, net-billing RCEm i RCE, osobna encja eksportu, zapisywane ustawienia i miesięczne salda początkowe.
 - Rozliczenie każdej taryfy miesiąc po miesiącu: wykorzystanie i wygaśnięcie opustów/depozytu, potencjalny zwrot, saldo końcowe i kwota do zapłaty. Ranking i wykres miesięczny uwzględniają rozliczenie prosumenta.
 - Lokalna baza oficjalnych cen eksportu PSE: historia RCE i RCEm, aktualizacje i korekty, wznawianie pobierania. Ceny eksportu są niezależne od Kompasu G14dynamic.

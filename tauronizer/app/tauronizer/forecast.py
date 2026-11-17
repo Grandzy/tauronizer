@@ -12,7 +12,7 @@ def dynamic_schedule(tariff, now=None):
     now = (now or datetime.now(timezone.utc)).astimezone(timezone.utc)
     if not tariff or tariff['config'].get('zone_source') != 'pse_kompas':
         return {'tariff_id': tariff['id'] if tariff else None, 'tariff_name': tariff['name'] if tariff else None,
-                'days': [], 'next_change': None, 'reason': 'Wybierz taryfę G14dynamic w Sensorach.'}
+                'days': [], 'next_change': None, 'reason': 'Wybierz taryfę G14dynamic w Ustawieniach.'}
     zones = {zone.kompas_level: zone for zone in compile_zones(tariff['config'])}
     today = now.astimezone(TZ).date()
     start = datetime.combine(today, time.min, TZ).astimezone(timezone.utc)

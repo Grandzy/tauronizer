@@ -1978,3 +1978,6 @@ select.input {
 .prosumer-summary { display: block; }
 .prosumer-summary p { margin: 8px 0 0; }
 .prosumer-settings [hidden] { display: none !important; }
+
+.analysis-source { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 8px 16px; margin-bottom: 18px; }
+#tab-settings > .card { margin-bottom: 20px; }

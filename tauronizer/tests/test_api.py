@@ -178,21 +178,28 @@ def test_analyze_and_history(client: TestClient) -> None:
     assert client.get("/api/analyses").json()["analyses"] == []
 
 
-def test_invoice_analysis_uses_shared_tariff_calculation(client: TestClient) -> None:
+def test_invoice_analysis_uses_zone_totals_and_shared_tariff_calculation(client: TestClient) -> None:
     response = client.post("/api/analyze", json={
-        "source": "invoice", "total_kwh": 240,
+        "source": "invoice", "invoice_tariff_id": "preset_g13",
+        "invoice_zone_kwh": {"szczyt_przedpoludniowy": 35,
+                              "szczyt_popoudniowy": 42, "pozaszczyt": 192},
         "start": "2026-01-05", "end": "2026-01-05",
-        "tariff_ids": ["preset_g11"],
+        "tariff_ids": ["preset_g13", "preset_g11"],
     })
     assert response.status_code == 200, response.text
     result = response.json()
-    assert result["total_kwh"] == 240
+    assert result["total_kwh"] == 269
     assert result["data_source"] == "invoice"
     assert result["estimated_profile"] is True
     assert result["data_quality"] is None
     assert result["sample_count"] == 24
-    assert "równomiernie" in result["warnings"][0]
-    assert result["tariffs"][0]["total_pln"] is not None
+    assert result["invoice_zone_kwh"]["pozaszczyt"] == 192
+    assert "strefach zachowano" in result["warnings"][0]
+    g13 = next(tariff for tariff in result["tariffs"] if tariff["tariff_id"] == "preset_g13")
+    zone_kwh = {zone["id"]: zone["kwh"] for zone in g13["zones"]}
+    assert zone_kwh["szczyt_przedpoludniowy"] == 35
+    assert zone_kwh["szczyt_popoudniowy_zima"] == 42
+    assert zone_kwh["pozaszczyt"] == 192
 
 
 def test_invoice_analysis_rejects_missing_or_invalid_consumption(client: TestClient) -> None:
@@ -200,14 +207,15 @@ def test_invoice_analysis_rejects_missing_or_invalid_consumption(client: TestCli
         "source": "invoice", "start": "2026-01-05", "end": "2026-01-05",
     })
     assert missing.status_code == 400
-    assert "kWh" in missing.json()["detail"]
+    assert "stref" in missing.json()["detail"]
 
     negative = client.post("/api/analyze", json={
-        "source": "invoice", "total_kwh": -2,
+        "source": "invoice", "invoice_tariff_id": "preset_g11",
+        "invoice_zone_kwh": {"cala_doba": -2},
         "start": "2026-01-05", "end": "2026-01-05",
     })
     assert negative.status_code == 422
-    assert "większe od zera" in negative.json()["detail"][0]["msg"]
+    assert "ujemne" in negative.json()["detail"][0]["msg"]
 
     reversed_period = client.post("/api/analyze", json={
         "source": "invoice", "total_kwh": 20,

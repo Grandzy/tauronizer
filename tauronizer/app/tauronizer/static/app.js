@@ -455,6 +455,7 @@ async function loadTariffs() {
     }
     state.knownTariffIds = ids;
 
+    renderInvoiceTariffs();
     renderTariffChips();
     renderTariffGrid();
     loadKompas();
@@ -465,6 +466,42 @@ async function loadTariffs() {
     $('#tariff-grid').innerHTML = `<div class="empty-state card"><p class="muted">${escapeHtml(error.message)}</p></div>`;
     toast(`Nie udało się pobrać taryf: ${error.message}`, 'error', 8000);
   }
+}
+
+function invoiceZoneGroup(zone) {
+  return String(zone.id).replace(/_(zima|lato)$/, '');
+}
+
+function renderInvoiceTariffs() {
+  const select = $('#invoice-tariff');
+  if (!select) return;
+  const previous = select.value;
+  select.innerHTML = state.tariffs.map((tariff) => `<option value="${escapeHtml(tariff.id)}">${escapeHtml(tariff.name)}</option>`).join('');
+  const fallback = state.tariffs.find((tariff) => tariff.preset_id === 'g13') || state.tariffs[0];
+  select.value = state.tariffs.some((tariff) => tariff.id === previous) ? previous : (fallback?.id || '');
+  renderInvoiceZoneFields();
+}
+
+function renderInvoiceZoneFields() {
+  const tariff = state.tariffs.find((item) => item.id === $('#invoice-tariff')?.value);
+  const container = $('#invoice-zone-fields');
+  if (!container || !tariff) return;
+  const groups = new Map();
+  tariff.config.zones.forEach((zone) => {
+    const key = invoiceZoneGroup(zone);
+    if (!groups.has(key)) {
+      const label = zone.name.replace(/\s*\((zima|lato)\)/i, '').replace(/\s*[—-]\s*strefa domyślna/i, '');
+      groups.set(key, label);
+    }
+  });
+  container.innerHTML = Array.from(groups, ([id, name]) => `<label class="field"><span class="field-label">${escapeHtml(name)} (kWh)</span><input class="input invoice-zone-kwh" data-zone="${escapeHtml(id)}" type="number" min="0" max="10000000" step="0.01" inputmode="decimal" required placeholder="Wpisz 0, jeśli brak"></label>`).join('');
+  container.querySelectorAll('.invoice-zone-kwh').forEach((input) => input.addEventListener('input', updateInvoiceTotal));
+  updateInvoiceTotal();
+}
+
+function updateInvoiceTotal() {
+  const values = $$('.invoice-zone-kwh').map((input) => Number(input.value) || 0);
+  $('#invoice-total').textContent = `Suma stref: ${formatNumber(values.reduce((a, b) => a + b, 0), 2)} kWh`;
 }
 
 async function loadHistory() {
@@ -543,13 +580,14 @@ async function handleAnalyze(event) {
 
   const entityId = $('#entity-select').value;
   const source = $('#data-source').value;
-  const invoiceKwh = $('#invoice-kwh').value;
+  const invoiceZones = Object.fromEntries($$('.invoice-zone-kwh').map((input) => [input.dataset.zone, input.value]));
   const start = $('#date-start').value;
   const end = $('#date-end').value;
   const tariffIds = Array.from(state.selectedTariffs);
 
   if (source === 'elicznik' && !entityId) return toast('Wybierz encję zużycia energii.', 'error');
-  if (source === 'invoice' && (!invoiceKwh || !Number.isFinite(Number(invoiceKwh)) || Number(invoiceKwh) <= 0)) return toast('Wpisz prawidłowe zużycie z faktury w kWh (większe od zera).', 'error');
+  if (source === 'invoice' && Object.values(invoiceZones).some((value) => value === '' || !Number.isFinite(Number(value)) || Number(value) < 0)) return toast('Wpisz nieujemne zużycie w kWh dla każdej strefy. Jeśli brak zużycia, wpisz 0.', 'error');
+  if (source === 'invoice' && Object.values(invoiceZones).reduce((sum, value) => sum + Number(value), 0) <= 0) return toast('Suma zużycia we wszystkich strefach musi być większa od zera.', 'error');
   if (!start || !end) return toast('Uzupełnij zakres dat.', 'error');
   if (start > end) return toast('Data początkowa jest późniejsza niż końcowa.', 'error');
   if (!tariffIds.length) return toast('Zaznacz co najmniej jedną taryfę.', 'error');
@@ -565,7 +603,7 @@ async function handleAnalyze(event) {
   try {
     const result = await api('api/analyze', {
       method: 'POST',
-      body: JSON.stringify({ source, entity_id: source === 'elicznik' ? entityId : null, total_kwh: source === 'invoice' ? Number(invoiceKwh) : null, start, end, tariff_ids: tariffIds }),
+      body: JSON.stringify({ source, entity_id: source === 'elicznik' ? entityId : null, invoice_tariff_id: source === 'invoice' ? $('#invoice-tariff').value : null, invoice_zone_kwh: source === 'invoice' ? Object.fromEntries(Object.entries(invoiceZones).map(([key, value]) => [key, Number(value)])) : null, start, end, tariff_ids: tariffIds }),
     });
     state.analysis = result;
     try {
@@ -726,7 +764,7 @@ function renderAnalysis(result) {
       <div class="empty-icon">⚠️</div>
       <h3>Nie udało się policzyć żadnej taryfy</h3>
       <p class="muted">${escapeHtml(failed[0]?.error || 'Brak danych do obliczeń.')}</p>
-    </div>${result.estimated_profile ? '<section class="card data-quality"><h3>Szacunek na podstawie faktury</h3><p>Godzinowy profil i zużycie w strefach rozłożono równomiernie, ponieważ faktura zwykle nie zawiera danych godzinowych. Wynik taryf wielostrefowych jest szacunkowy.</p></section>' : renderDataQuality(result.data_quality)}`;
+    </div>${result.estimated_profile ? '<section class="card data-quality"><h3>Dane z faktury · rozkład godzinowy szacunkowy</h3><p>Wpisane sumy kWh dla stref zachowano. Wewnątrz stref zużycie rozłożono równomiernie między pasujące godziny; profil dobowy i porównanie z innymi taryfami są szacunkowe. Koszty korzystają ze stawek zapisanych w Tauronizerze, które mogą różnić się od cen w Twojej umowie.</p></section>' : renderDataQuality(result.data_quality)}`;
     return;
   }
 
@@ -953,7 +991,7 @@ function renderAnalysis(result) {
 
   container.innerHTML = `
     <div class="result-meta">
-      ${result.estimated_profile ? '<span><strong>Dane z faktury · profil szacunkowy</strong></span>' : '<span><strong>Dane z eLicznika</strong></span>'}
+      ${result.estimated_profile ? '<span><strong>Dane z faktury · kWh według stref</strong></span>' : '<span><strong>Dane z eLicznika</strong></span>'}
       <span><strong>${escapeHtml(result.entity_name || result.entity_id)}</strong>
         <span class="muted">(${escapeHtml(result.entity_id)})</span></span>
       <span>${formatDate(result.start)} – ${formatDate(result.end)} · ${result.days} dni</span>
@@ -962,7 +1000,7 @@ function renderAnalysis(result) {
     </div>
 
     ${warningBlock}
-    ${result.estimated_profile ? '<section class="card data-quality"><h3>Szacunek na podstawie faktury</h3><p>Wpisano łączne zużycie z faktury. Godzinowy profil i zużycie w strefach rozłożono równomiernie w całym okresie, ponieważ faktura zwykle nie zawiera danych godzinowych. Koszty taryf wielostrefowych mogą różnić się od rzeczywistych.</p></section>' : renderDataQuality(result.data_quality)}
+    ${result.estimated_profile ? '<section class="card data-quality"><h3>Dane z faktury · rozkład godzinowy szacunkowy</h3><p>Wpisane sumy kWh dla stref zachowano. Wewnątrz stref zużycie rozłożono równomiernie między pasujące godziny; profil dobowy i porównanie z innymi taryfami są szacunkowe. Koszty korzystają ze stawek zapisanych w Tauronizerze, które mogą różnić się od cen w Twojej umowie.</p></section>' : renderDataQuality(result.data_quality)}
 
     <div class="result-hero">
       <div class="hero-main">
@@ -1672,7 +1710,13 @@ async function handleHistoryAction(event) {
       if (result.estimated_profile) {
         $('#data-source').value = 'invoice';
         $('#data-source').dispatchEvent(new Event('change'));
-        $('#invoice-kwh').value = result.total_kwh;
+        if (result.invoice_tariff_id) $('#invoice-tariff').value = result.invoice_tariff_id;
+        renderInvoiceZoneFields();
+        Object.entries(result.invoice_zone_kwh || {}).forEach(([id, value]) => {
+          const input = $$('.invoice-zone-kwh').find((item) => item.dataset.zone === id);
+          if (input) input.value = value;
+        });
+        updateInvoiceTotal();
       } else {
         $('#data-source').value = 'elicznik';
         $('#data-source').dispatchEvent(new Event('change'));
@@ -1725,6 +1769,7 @@ function bindEvents() {
     $('#entity-field').hidden = invoice;
     $('#invoice-fields').hidden = !invoice;
   });
+  $('#invoice-tariff').addEventListener('change', renderInvoiceZoneFields);
   bindDateControls();
   bindTariffChips();
   bindModalEvents();

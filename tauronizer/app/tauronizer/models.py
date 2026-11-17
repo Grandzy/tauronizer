@@ -113,7 +113,8 @@ class AnalyzeRequest(BaseModel):
     start: date
     end: date
     tariff_ids: list[str] = Field(default_factory=list, max_length=20)
-    total_kwh: float | None = None
+    invoice_tariff_id: str | None = Field(default=None, max_length=100)
+    invoice_zone_kwh: dict[str, float] | None = None
 
     @field_validator("entity_id")
     @classmethod
@@ -125,18 +126,27 @@ class AnalyzeRequest(BaseModel):
             raise ValueError("To nie wygląda na identyfikator encji Home Assistant.")
         return value
 
-    @field_validator("total_kwh", mode="before")
+    @field_validator("invoice_zone_kwh", mode="before")
     @classmethod
-    def _validate_total_kwh(cls, value: Any) -> Any:
+    def _validate_invoice_zone_kwh(cls, value: Any) -> Any:
         if value is None:
             return None
-        try:
-            number = float(value)
-        except (TypeError, ValueError):
-            raise ValueError("Zużycie wpisz jako liczbę w kWh, np. 245,6.") from None
-        if not math.isfinite(number) or number <= 0 or number > 10_000_000:
-            raise ValueError("Zużycie musi być większe od zera i nie może przekraczać 10 000 000 kWh.")
-        return number
+        if not isinstance(value, dict) or not value:
+            raise ValueError("Wpisz zużycie w kWh osobno dla każdej strefy z faktury.")
+        cleaned = {}
+        total = 0.0
+        for zone, raw in value.items():
+            try:
+                number = float(raw)
+            except (TypeError, ValueError):
+                raise ValueError("Zużycie każdej strefy wpisz jako liczbę w kWh, np. 35.") from None
+            if not math.isfinite(number) or number < 0:
+                raise ValueError("Zużycie w strefie nie może być ujemne ani nieprawidłowe.")
+            total += number
+            cleaned[str(zone)] = number
+        if total <= 0 or total > 10_000_000:
+            raise ValueError("Suma zużycia ze stref musi być większa od zera i nie może przekraczać 10 000 000 kWh.")
+        return cleaned
 
 
 class TariffSummary(BaseModel):

@@ -42,7 +42,8 @@ from .ha_client import HAClient, HAError
 from .models import AnalyzeRequest, TariffCreate, TariffUpdate, SensorSettings
 from .sensors import SensorPublisher
 from .kompas import KompasCache
-from .tariffs import KOMPAS_ZONE_DESCRIPTIONS, PRESET_NOTE, TZ, TariffValidationError, compile_zones
+from .tariffs import (KOMPAS_ZONE_DESCRIPTIONS, PRESET_NOTE, TZ, TariffValidationError,
+                      compile_zones, holidays_between, zone_for)
 
 MAX_RANGE_DAYS = 3660
 
@@ -299,15 +300,43 @@ async def run_analysis(payload: AnalyzeRequest, request: Request) -> dict[str, A
 
     warnings: list[str] = []
     if payload.source == "invoice":
-        if payload.total_kwh is None:
-            raise HTTPException(status_code=400, detail="Wpisz zużycie energii z faktury w kWh.")
-        hours = int((end_utc - start_utc).total_seconds() // 3600)
-        if hours <= 0:
-            raise HTTPException(status_code=400, detail="Okres rozliczeniowy musi obejmować co najmniej jedną godzinę.")
-        entity_name, unit = "Dane z faktury (szacunek profilu)", "kWh"
-        in_range = [ConsumptionSample(timestamp=start_utc + timedelta(hours=i), kwh=payload.total_kwh / hours)
-                    for i in range(hours)]
-        warnings.append("Dane z faktury: całkowite zużycie rozłożono równomiernie na wszystkie godziny okresu. Podział na strefy, profil godzinowy i wynik taryf wielostrefowych są szacunkowe.")
+        if not payload.invoice_tariff_id or not payload.invoice_zone_kwh:
+            raise HTTPException(status_code=400, detail="Wybierz taryfę z faktury i wpisz zużycie w kWh dla każdej strefy.")
+        invoice_tariff = get_tariff(payload.invoice_tariff_id)
+        if invoice_tariff is None:
+            raise HTTPException(status_code=400, detail="Nie znaleziono taryfy wybranej z faktury.")
+        try:
+            invoice_zones = compile_zones(invoice_tariff["config"])
+            holidays = holidays_between(payload.start, payload.end)
+            dynamic_levels = None
+            if invoice_tariff["config"].get("zone_source") == "pse_kompas":
+                from .db import kompas_levels
+                dynamic_levels = kompas_levels()
+            def zone_group(zone):
+                return zone.id.removesuffix("_zima").removesuffix("_lato")
+            groups = {zone_group(zone) for zone in invoice_zones}
+            if set(payload.invoice_zone_kwh) != groups:
+                raise HTTPException(status_code=400, detail="Wpisz wartość dla każdej strefy wybranej taryfy z faktury.")
+            buckets: dict[str, list[datetime]] = {group: [] for group in groups}
+            cursor = start_utc
+            while cursor < end_utc:
+                local = cursor.astimezone(TZ)
+                matched = zone_for(local, invoice_zones, holidays, dynamic_levels)
+                buckets[zone_group(matched)].append(cursor)
+                cursor += timedelta(hours=1)
+        except HTTPException:
+            raise
+        except TariffValidationError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        in_range = []
+        for group, timestamps in buckets.items():
+            amount = payload.invoice_zone_kwh[group]
+            if amount > 0 and not timestamps:
+                raise HTTPException(status_code=400, detail=f"Okres nie zawiera godzin strefy {group}; sprawdź daty i taryfę z faktury.")
+            per_hour = amount / len(timestamps) if timestamps else 0
+            in_range.extend(ConsumptionSample(timestamp=stamp, kwh=per_hour) for stamp in timestamps)
+        entity_name, unit = f"Faktura — {invoice_tariff['name']}", "kWh"
+        warnings.append("Dane z faktury: podane sumy kWh w strefach zachowano. Wewnątrz każdej strefy zużycie rozłożono równomiernie między pasujące godziny. Profil godzinowy i porównanie z innymi taryfami są szacunkowe. Koszty używają stawek skonfigurowanych w Tauronizerze i nie odtwarzają indywidualnego cennika z faktury, jeśli jest inny.")
     else:
         if not payload.entity_id:
             raise HTTPException(status_code=400, detail="Wybierz encję zużycia energii.")
@@ -392,6 +421,8 @@ async def run_analysis(payload: AnalyzeRequest, request: Request) -> dict[str, A
             "unit": unit,
             "data_source": payload.source,
             "estimated_profile": payload.source == "invoice",
+            "invoice_tariff_id": payload.invoice_tariff_id if payload.source == "invoice" else None,
+            "invoice_zone_kwh": payload.invoice_zone_kwh if payload.source == "invoice" else None,
             "warnings": warnings,
             "created_at": utcnow(),
         }

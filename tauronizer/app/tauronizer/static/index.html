@@ -79,9 +79,11 @@
           <select id="data-source" class="input"><option value="elicznik">eLicznik (Home Assistant)</option><option value="invoice">Ręcznie z faktury</option></select>
         </div>
         <div class="field" id="invoice-fields" hidden>
-          <label class="field-label" for="invoice-kwh">Zużycie energii w okresie (kWh)</label>
-          <input id="invoice-kwh" class="input" type="number" min="0.001" max="10000000" step="0.01" inputmode="decimal" placeholder="np. 245,6">
-          <p class="field-hint">Wpisz łączne zużycie energii czynnej pobranej z sieci z faktury. Profil godzinowy i podział na strefy zostaną oszacowane równomiernie.</p>
+          <label class="field-label" for="invoice-tariff">Grupa taryfowa z faktury</label>
+          <select id="invoice-tariff" class="input"></select>
+          <p class="field-hint">Wpisz kWh osobno dla każdej strefy, zgodnie z tabelą „Odczyty licznika i zużycie” na fakturze. Wiersze tej samej strefy z różnych podokresów zsumuj.</p>
+          <div id="invoice-zone-fields" class="invoice-zone-fields"></div>
+          <p class="field-hint" id="invoice-total">Suma: 0 kWh</p>
         </div>
         <div class="grid-2">
           <label class="field" id="entity-field">

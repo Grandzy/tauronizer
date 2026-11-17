@@ -242,6 +242,11 @@ rejestrze). Obsługiwane architektury: `amd64` i `aarch64`.
    `state_class: total_increasing`), zakres dat i taryfy do porównania.
 2. Kliknij **Analizuj zużycie**. Wynik pokaże najtańszą taryfę, koszt w
    okresie, szacunek roczny oraz rozbicie na strefy i składniki rachunku.
+   Jeśli nie masz eLicznika, wybierz **Ręcznie z faktury**, wybierz grupę taryfową
+   z faktury i wpisz zużycie w kWh osobno dla każdej strefy. Powtarzające się
+   w fakturze wiersze tej samej strefy zsumuj. Strefowe sumy są zachowane;
+   podział godzinowy w obrębie strefy i porównanie z innymi taryfami są szacunkowe.
+   Koszty korzystają z cen zapisanych w Tauronizerze, niekoniecznie z cen z umowy.
 3. **Taryfy** — dostosuj stawki do swojej umowy. Możesz edytować preset
    (zmiany są lokalne), zduplikować go jako własną taryfę albo utworzyć
    nową. **Przywróć presety** cofa edycje presetów do wartości domyślnych.

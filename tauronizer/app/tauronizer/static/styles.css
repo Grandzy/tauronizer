@@ -378,6 +378,8 @@ svg {
   margin-bottom: 20px;
 }
 
+.invoice-zone-fields { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 12px; margin: 12px 0 4px; }
+
 .input {
   width: 100%;
   min-height: 44px;

@@ -379,7 +379,7 @@ async function loadConfig() {
     $('#app-version').textContent = `v${config.version}`;
     $('#tariff-disclaimer').innerHTML = `
       <span><strong>Zanim porównasz:</strong> ${escapeHtml(config.disclaimer)}
-      Wbudowane taryfy (G11, G12, G12w, G13, G14dynamic) są edytowalne — możesz też skopiować preset
+      Presety TAURON, PGE i ENEA są edytowalne — możesz też skopiować preset
       i dopasować go do własnej umowy.</span>`;
   } catch (error) {
     toast(`Nie udało się wczytać konfiguracji: ${error.message}`, 'error', 8000);
@@ -1216,13 +1216,29 @@ function tariffZoneHelp(config) {
   </details>`;
 }
 
+function tariffReferenceHelp(config) {
+  const reference = config.reference;
+  if (!reference) return '';
+  const sources = (reference.sources || []).filter(source => {
+    try { return new URL(source.url).protocol === 'https:'; } catch (error) { return false; }
+  });
+  return `<details class="tariff-zone-help tariff-reference">
+    <summary>Źródła i założenia presetu</summary>
+    <p><strong>${escapeHtml(reference.supplier)} + ${escapeHtml(reference.distributor)}</strong><br>
+      Stan stawek: ${escapeHtml(reference.valid_from)}–${escapeHtml(reference.valid_until)} · sprawdzono ${escapeHtml(reference.checked_on)}.</p>
+    <p>${escapeHtml(reference.note)}</p>
+    <ul>${sources.map(source => `<li><a href="${escapeHtml(source.url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(source.label)}</a></li>`).join('')}</ul>
+    <p class="muted small">Źródła opisują bazowy preset. Po edycji lub skopiowaniu taryfy jej stawki mogą różnić się od dokumentów.</p>
+  </details>`;
+}
+
 function renderTariffGrid() {
   const grid = $('#tariff-grid');
   if (!state.tariffs.length) {
     grid.innerHTML = `<div class="empty-state card">
       <div class="empty-icon">🧾</div>
       <h3>Brak zdefiniowanych taryf</h3>
-      <p class="muted">Dodaj własną taryfę albo przywróć presety Tauron.</p>
+      <p class="muted">Dodaj własną taryfę albo przywróć presety TAURON, PGE i ENEA.</p>
       <button class="button primary" type="button" id="empty-new-tariff">+ Nowa taryfa</button>
     </div>`;
     $('#empty-new-tariff')?.addEventListener('click', () => openTariffEditor(null));
@@ -1250,6 +1266,7 @@ function renderTariffGrid() {
         <p class="muted small">Strefy: energia + sieć, netto zł/kWh, bez akcyzy i opłat dodatkowych.</p>
         <div class="zone-pills">${pills || '<span class="muted small">Brak stref</span>'}</div>
         ${tariffZoneHelp(config)}
+        ${tariffReferenceHelp(config)}
         <div class="tariff-meta">
           <span>${range ? `zmienne brutto: <b>${formatNumber(range.min, 2)}${range.max - range.min > 0.001 ? `–${formatNumber(range.max, 2)}` : ''} zł/kWh</b>` : 'brak cen'}</span>
           <span>stałe: <b>${formatPLN(fixed)}</b>/mies. netto${config.capacity_fee ? " + mocowa według progu zużycia" : ""}</span>
@@ -1454,6 +1471,7 @@ function openTariffEditor(tariff) {
                      placeholder="Krótki opis, np. szczyt w dni robocze 6–13 i 15–22">
             </label>
 
+            ${tariffReferenceHelp(config)}
             <div>
               <div class="group-head">
                 <div>
@@ -1472,7 +1490,7 @@ function openTariffEditor(tariff) {
                   <button type="button" class="link-button" data-add-fee="fixed">+ Dodaj</button>
                 </div>
                 <div id="fixed-fees">${fixedFees.map((fee) => feeRowHtml(fee, 'fixed')).join('')}</div>
-                <p class="field-hint">Miesięczne, netto; proporcjonalnie do okresu. Sieciowa: 1 faza 7,38 zł; 3 fazy 10,86 zł. Abonament od 01.10.2026 nie jest naliczany (0 zł). Opłatę handlową wpisz z umowy.</p>
+                <p class="field-hint">Miesięczne, netto; proporcjonalnie do okresu. Sieciową dopasuj do operatora, taryfy i liczby faz według źródeł presetu lub swojej umowy. Abonament od 01.10.2026 nie jest naliczany (0 zł). Opłatę handlową wpisz z umowy.</p>
               </div>
               <div>
                 <div class="group-head">
@@ -1492,7 +1510,7 @@ function openTariffEditor(tariff) {
                 <input class="input" id="capacity-annual" type="number" min="0" step="any"
                   value="${config.capacity_fee?.annual_kwh ?? ''}" placeholder="Puste: szacunek roczny z analizy">
               </label>
-              <p class="field-hint">Wpisz pobór z sieci z ostatnich 12 miesięcy według odczytu Taurona. Dla nowego odbiorcy wpisz pobór do ostatniego odczytu (0 przed pierwszym). Puste pole oznacza szacunek: zużycie z analizy × 365,25 / liczba dni. Krótki lub niepełny okres może wskazać inny próg niż faktura.</p>
+              <p class="field-hint">Wpisz pobór z sieci z ostatnich 12 miesięcy według odczytu operatora. Dla nowego odbiorcy wpisz pobór do ostatniego odczytu (0 przed pierwszym). Puste pole oznacza szacunek: zużycie z analizy × 365,25 / liczba dni. Krótki lub niepełny okres może wskazać inny próg niż faktura.</p>
               <div class="form-row">
                 ${['poniżej 500 kWh', '500–1200 kWh', 'powyżej 1200 do 2800 kWh', 'powyżej 2800 kWh'].map((label, index) => `
                   <label class="field">
@@ -1645,6 +1663,7 @@ async function saveTariffForm(form) {
       config: {
         zones,
         zone_source: state.editingTariff?.config.zone_source || 'schedule',
+        reference: state.editingTariff?.config.reference || null,
         fixed_fees: readFees(form, 'fixed-fees', 'net_monthly'),
         variable_fees: readFees(form, 'variable-fees', 'net_per_kwh'),
         capacity_fee: capacityFee,
@@ -1853,7 +1872,7 @@ function bindEvents() {
 
   $('#new-tariff').addEventListener('click', () => openTariffEditor(null));
   $('#restore-presets').addEventListener('click', async () => {
-    if (!window.confirm('Przywrócić domyślne presety Tauron? Zmiany w presetach zostaną nadpisane.')) return;
+    if (!window.confirm('Przywrócić domyślne presety TAURON, PGE i ENEA? Zmiany w presetach zostaną nadpisane.')) return;
     try {
       const result = await api('api/tariffs/restore-presets', { method: 'POST' });
       toast(`Przywrócono ${result.restored} ${plural(result.restored, 'preset', 'presety', 'presetów')}.`, 'success');

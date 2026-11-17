@@ -13,6 +13,8 @@ from datetime import date, datetime, timedelta
 from typing import Any, Iterable, Mapping, Sequence
 from zoneinfo import ZoneInfo
 
+from .supplier_presets import SUPPLIER_PRESETS
+
 TZ = ZoneInfo("Europe/Warsaw")
 
 DAY_NAMES = (
@@ -317,6 +319,8 @@ def zone_for(
 # Verified 2026-11-14 against URE tariff 265/2025 and TAURON distribution tariff.
 # Full sources and assumptions: README.md, section "Stawki Tauron 2026".
 PRESET_NOTE = (
+    "Presety TAURON, PGE i ENEA 2026 są edytowalne. Wybieraj taryfy właściwe dla swojego obszaru i umowy. "
+    "PGE/ENEA: daty, źródła i założenia są w szczegółach presetu. TAURON: "
     "G14dynamic: cennik Prąd ze zmienną dystrybucją, godzinowe strefy Kompasu PSE. "
     "TAURON Sprzedaż 2026 (bez obszaru gliwickiego i ofert rynkowych), "
     "dystrybucja według stawek od 01.02.2026. Wszystkie stawki netto; "
@@ -531,7 +535,8 @@ _g14['fixed_fees'] = [fee for fee in _g14['fixed_fees'] if 'abonamentowa' not in
 PRESETS.append({'id': 'g14dynamic', 'name': 'Tauron G14dynamic',
     'description': 'Cztery strefy dystrybucji według godzinowych wskazań Kompasu PSE. Cena energii stała według cennika Prąd ze zmienną dystrybucją 2026; porównanie wymaga danych Kompasu w lokalnej bazie.',
     'config': _g14})
-PRESET_VERSION = 6
+PRESETS.extend(SUPPLIER_PRESETS)
+PRESET_VERSION = 7
 
 
 def preset_by_id(preset_id: str) -> dict[str, Any] | None:

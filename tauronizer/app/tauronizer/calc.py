@@ -351,7 +351,7 @@ def analyze(
             f"Opłaty miesięczne rozliczono proporcjonalnie ({days} dni, 365,25 dni/rok). "
             "Opłata mocowa jest miesięcznym ryczałtem według progu poboru podanego "
             "w taryfie; bez podanej wartości próg oszacowano z zużycia × 365,25/liczba dni. "
-            "To szacunek porównawczy, nie kwalifikacja według odczytów Taurona. "
+            "To szacunek porównawczy, nie kwalifikacja według odczytów operatora. "
             "Wszystkie składniki i akcyzę zsumowano netto; VAT doliczono raz do sumy. "
             "Wykres miesięczny porównuje obecną taryfę z najtańszą w całej analizie "
             "spośród taryf wybranych do porównania. Ta sama taryfa obowiązuje dla wszystkich miesięcy. Opłaty stałe są proporcjonalne "

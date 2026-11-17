@@ -345,3 +345,16 @@ Wykres korzysta z tych samych danych i założeń co reszta analizy.
 Nowe wyniki zapisują osobne pozycje faktury w Historii. Starsze wyniki także
 pokazują wykres, ale z opłatami zmiennymi i stałymi w grupach; ponowne wykonanie
 analizy pozwala zobaczyć szczegółowe pozycje bez zgadywania dawnych stawek.
+
+
+## Presety PGE i ENEA
+
+Dostępne są PGE G11, G12, G12w, G12n oraz ENEA G11, G12, G12w. Każdy można
+edytować i duplikować. W **Taryfy → Źródła i założenia presetu** sprawdzisz
+sprzedawcę, dystrybutora, daty, dokumenty oraz przyjęty zegar i godziny.
+Wariant domyślny: 3 fazy, aktualne stawki na 01.10–31.12.2026. ENEA G12 ma
+przykładową nocną 22–6 i 13–15; dokładne godziny ustala operator — dostosuj je
+do swojego PPE. PGE G12/G12w mają sezonową strefę popołudniową, G12n nocną 1–5
+oraz całe niedziele i święta. ENEA G12w ma szczyt 6–21 w dni robocze.
+Presety zakładają automatyczną zmianę czasu licznika; dla stałego czasu zimowego
+dostosuj letnie reguły. Porównuj taryfy odpowiadające swojej umowie i obszarowi.

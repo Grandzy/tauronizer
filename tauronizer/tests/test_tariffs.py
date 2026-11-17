@@ -248,7 +248,8 @@ def test_verified_2026_net_prices():
     }
     for item in PRESETS:
         config = item["config"]
-        assert [(z["energy_net"], z["distribution_net"]) for z in config["zones"]] == expected[item["id"]]
+        if item['id'] in expected:
+            assert [(z["energy_net"], z["distribution_net"]) for z in config["zones"]] == expected[item["id"]]
         assert [fee["net_per_kwh"] for fee in config["variable_fees"]] == [0.0332, 0.0073, 0.003]
         assert config["excise_net_per_kwh"] == 0.005
         assert config["capacity_fee"]["net_monthly_rates"] == [4.29, 10.31, 17.18, 24.05]

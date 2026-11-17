@@ -4,7 +4,7 @@
 
 [![Otwórz Home Assistant i dodaj repozytorium dodatków z Tauronizerem](https://my.home-assistant.io/badges/supervisor_add_addon_repository.svg)](https://my.home-assistant.io/redirect/supervisor_add_addon_repository/?repository_url=https%3A%2F%2Fgithub.com%2Fdirek%2Ftauronizer)
 
-**Porównywarka taryf energii elektrycznej Tauron dla Home Assistant.**
+**Porównywarka taryf energii elektrycznej TAURON, PGE i ENEA dla Home Assistant.**
 
 Tauronizer pobiera godzinowe zużycie energii ze statystyk długoterminowych
 Home Assistant, przypisuje każdą godzinę do strefy wybranej taryfy i liczy
@@ -23,6 +23,13 @@ profilu zużycia — w wybranym okresie i w przeliczeniu na rok.
 W analizie możesz włączyć net-metering (0,8/0,7) albo net-billing (RCEm/RCE),
 wybrać licznik eksportu i dodać saldo początkowe. Porównanie uwzględnia miesięczne
 rozliczenie oraz pozostały depozyt lub opust. [Konfiguracja i ograniczenia](docs/prosumenci.md).
+
+## Presety PGE i ENEA (DEV)
+
+Dodano PGE G11, G12, G12w i G12n (PGE Obrót + PGE Dystrybucja) oraz ENEA G11,
+G12 i G12w (ENEA S.A. + ENEA Operator). Są edytowalne i można je kopiować.
+Źródła, daty i założenia są dostępne w kartach taryf. [Pełne stawki i warianty godzin](docs/presety-pge-enea-2026.md).
+Domyślnie 3 fazy; ENEA G12 wymaga sprawdzenia godzin własnego licznika.
 
 ## Przykładowa analiza
 

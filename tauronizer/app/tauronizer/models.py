@@ -6,7 +6,7 @@ import re
 from datetime import date
 from typing import Annotated, Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, HttpUrl, field_validator
 
 ENTITY_RE = re.compile(r"^[a-z0-9_]+\.[a-z0-9_]+$")
 
@@ -84,9 +84,27 @@ class CapacityFee(BaseModel):
     )
 
 
+class TariffSource(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+    label: str = Field(min_length=1, max_length=120)
+    url: HttpUrl
+
+
+class TariffReference(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+    supplier: str = Field(min_length=1, max_length=100)
+    distributor: str = Field(min_length=1, max_length=100)
+    valid_from: date
+    valid_until: date
+    checked_on: date
+    note: str = Field(max_length=2000)
+    sources: list[TariffSource] = Field(min_length=1, max_length=10)
+
+
 class TariffConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
+    reference: TariffReference | None = None
     zones: list[Zone] = Field(min_length=1, max_length=16)
     zone_source: Literal['schedule', 'pse_kompas'] = 'schedule'
     fixed_fees: list[FixedFee] = Field(default_factory=list, max_length=20)

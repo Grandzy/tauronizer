@@ -136,7 +136,7 @@ def _ha(request: Request) -> HAClient:
 
 
 def _validated_config(payload: TariffCreate) -> dict[str, Any]:
-    config = payload.config.model_dump()
+    config = payload.config.model_dump(mode="json")
     compiled = compile_zones(config)
     by_id = {zone["id"]: zone for zone in config["zones"]}
     config["zones"] = [by_id[zone.id] for zone in compiled]

@@ -61,7 +61,7 @@ def test_presets_are_seeded(client: TestClient) -> None:
     response = client.get("/api/tariffs")
     assert response.status_code == 200
     tariffs = response.json()["tariffs"]
-    assert {item["preset_id"] for item in tariffs} == {"g11", "g12", "g12w", "g13", "g14dynamic"}
+    assert {item["preset_id"] for item in tariffs} == {"g11", "g12", "g12w", "g13", "g14dynamic", "pge_g11", "pge_g12", "pge_g12w", "pge_g12n", "enea_g11", "enea_g12", "enea_g12w"}
     assert all(item["is_preset"] for item in tariffs)
 
 
@@ -136,10 +136,10 @@ def test_restore_presets(client: TestClient) -> None:
 
     response = client.post("/api/tariffs/restore-presets")
     assert response.status_code == 200
-    assert response.json()["restored"] == 5
+    assert response.json()["restored"] == 12
 
     tariffs = client.get("/api/tariffs").json()["tariffs"]
-    assert len(tariffs) == 5
+    assert len(tariffs) == 12
 
 
 def test_analyze_and_history(client: TestClient) -> None:
@@ -162,7 +162,7 @@ def test_analyze_and_history(client: TestClient) -> None:
     assert result["data_quality"]["received_hours"] == 3
     assert result["data_quality"]["missing_hours"] == 21
     assert any("Koszty mogą być zaniżone" in warning for warning in result["warnings"])
-    assert len(result["tariffs"]) == 5
+    assert len(result["tariffs"]) == 12
 
     history = client.get("/api/analyses").json()["analyses"]
     assert len(history) == 1

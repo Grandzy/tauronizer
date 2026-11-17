@@ -542,11 +542,14 @@ async function handleAnalyze(event) {
   if (state.busy) return;
 
   const entityId = $('#entity-select').value;
+  const source = $('#data-source').value;
+  const invoiceKwh = $('#invoice-kwh').value;
   const start = $('#date-start').value;
   const end = $('#date-end').value;
   const tariffIds = Array.from(state.selectedTariffs);
 
-  if (!entityId) return toast('Wybierz encję zużycia energii.', 'error');
+  if (source === 'elicznik' && !entityId) return toast('Wybierz encję zużycia energii.', 'error');
+  if (source === 'invoice' && (!invoiceKwh || !Number.isFinite(Number(invoiceKwh)) || Number(invoiceKwh) <= 0)) return toast('Wpisz prawidłowe zużycie z faktury w kWh (większe od zera).', 'error');
   if (!start || !end) return toast('Uzupełnij zakres dat.', 'error');
   if (start > end) return toast('Data początkowa jest późniejsza niż końcowa.', 'error');
   if (!tariffIds.length) return toast('Zaznacz co najmniej jedną taryfę.', 'error');
@@ -554,7 +557,7 @@ async function handleAnalyze(event) {
   setAnalyzing(true);
   const status = $('#analyze-status');
   const startedAt = Date.now();
-  status.textContent = 'Pobieram statystyki z Home Assistant…';
+  status.textContent = source === 'invoice' ? 'Szacuję profil z danych faktury…' : 'Pobieram statystyki z Home Assistant…';
   const ticker = window.setInterval(() => {
     status.textContent = `Analizuję… ${Math.round((Date.now() - startedAt) / 1000)} s`;
   }, 1000);
@@ -562,11 +565,11 @@ async function handleAnalyze(event) {
   try {
     const result = await api('api/analyze', {
       method: 'POST',
-      body: JSON.stringify({ entity_id: entityId, start, end, tariff_ids: tariffIds }),
+      body: JSON.stringify({ source, entity_id: source === 'elicznik' ? entityId : null, total_kwh: source === 'invoice' ? Number(invoiceKwh) : null, start, end, tariff_ids: tariffIds }),
     });
     state.analysis = result;
     try {
-      localStorage.setItem('tauronizer-entity', entityId);
+      if (source === 'elicznik') localStorage.setItem('tauronizer-entity', entityId);
     } catch (error) {
       /* ignore */
     }
@@ -723,7 +726,7 @@ function renderAnalysis(result) {
       <div class="empty-icon">⚠️</div>
       <h3>Nie udało się policzyć żadnej taryfy</h3>
       <p class="muted">${escapeHtml(failed[0]?.error || 'Brak danych do obliczeń.')}</p>
-    </div>${renderDataQuality(result.data_quality)}`;
+    </div>${result.estimated_profile ? '<section class="card data-quality"><h3>Szacunek na podstawie faktury</h3><p>Godzinowy profil i zużycie w strefach rozłożono równomiernie, ponieważ faktura zwykle nie zawiera danych godzinowych. Wynik taryf wielostrefowych jest szacunkowy.</p></section>' : renderDataQuality(result.data_quality)}`;
     return;
   }
 
@@ -950,6 +953,7 @@ function renderAnalysis(result) {
 
   container.innerHTML = `
     <div class="result-meta">
+      ${result.estimated_profile ? '<span><strong>Dane z faktury · profil szacunkowy</strong></span>' : '<span><strong>Dane z eLicznika</strong></span>'}
       <span><strong>${escapeHtml(result.entity_name || result.entity_id)}</strong>
         <span class="muted">(${escapeHtml(result.entity_id)})</span></span>
       <span>${formatDate(result.start)} – ${formatDate(result.end)} · ${result.days} dni</span>
@@ -958,7 +962,7 @@ function renderAnalysis(result) {
     </div>
 
     ${warningBlock}
-    ${renderDataQuality(result.data_quality)}
+    ${result.estimated_profile ? '<section class="card data-quality"><h3>Szacunek na podstawie faktury</h3><p>Wpisano łączne zużycie z faktury. Godzinowy profil i zużycie w strefach rozłożono równomiernie w całym okresie, ponieważ faktura zwykle nie zawiera danych godzinowych. Koszty taryf wielostrefowych mogą różnić się od rzeczywistych.</p></section>' : renderDataQuality(result.data_quality)}
 
     <div class="result-hero">
       <div class="hero-main">
@@ -1665,8 +1669,16 @@ async function handleHistoryAction(event) {
       result.created_at = record.created_at;
       state.analysis = result;
 
-      ensureEntityOption(result.entity_id, result.entity_name);
-      $('#entity-select').value = result.entity_id;
+      if (result.estimated_profile) {
+        $('#data-source').value = 'invoice';
+        $('#data-source').dispatchEvent(new Event('change'));
+        $('#invoice-kwh').value = result.total_kwh;
+      } else {
+        $('#data-source').value = 'elicznik';
+        $('#data-source').dispatchEvent(new Event('change'));
+        ensureEntityOption(result.entity_id, result.entity_name);
+        $('#entity-select').value = result.entity_id;
+      }
       $('#date-start').value = result.start;
       $('#date-end').value = result.end;
       $$('#quick-ranges button').forEach((button) => button.classList.remove('is-active'));
@@ -1708,6 +1720,11 @@ function bindEvents() {
 
   $('#analysis-form').addEventListener('submit', handleAnalyze);
   $('#entity-select').addEventListener('change', updateEntityHint);
+  $('#data-source').addEventListener('change', () => {
+    const invoice = $('#data-source').value === 'invoice';
+    $('#entity-field').hidden = invoice;
+    $('#invoice-fields').hidden = !invoice;
+  });
   bindDateControls();
   bindTariffChips();
   bindModalEvents();

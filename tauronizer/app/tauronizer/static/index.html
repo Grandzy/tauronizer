@@ -70,12 +70,21 @@
         <div class="section-head compact">
           <div>
             <h2>Nowa analiza</h2>
-            <p class="muted">Wybierz licznik energii i okres, dla którego Home Assistant ma statystyki długoterminowe.</p>
+            <p class="muted">Porównaj koszty na podstawie danych z eLicznika albo faktury.</p>
           </div>
         </div>
 
+        <div class="field">
+          <label class="field-label" for="data-source">Źródło danych</label>
+          <select id="data-source" class="input"><option value="elicznik">eLicznik (Home Assistant)</option><option value="invoice">Ręcznie z faktury</option></select>
+        </div>
+        <div class="field" id="invoice-fields" hidden>
+          <label class="field-label" for="invoice-kwh">Zużycie energii w okresie (kWh)</label>
+          <input id="invoice-kwh" class="input" type="number" min="0.001" max="10000000" step="0.01" inputmode="decimal" placeholder="np. 245,6">
+          <p class="field-hint">Wpisz łączne zużycie energii czynnej pobranej z sieci z faktury. Profil godzinowy i podział na strefy zostaną oszacowane równomiernie.</p>
+        </div>
         <div class="grid-2">
-          <label class="field">
+          <label class="field" id="entity-field">
             <span class="field-label">Encja zużycia energii</span>
             <select id="entity-select" class="input" required>
               <option value="">Ładowanie encji…</option>

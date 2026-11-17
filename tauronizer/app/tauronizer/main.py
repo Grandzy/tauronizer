@@ -292,34 +292,40 @@ async def run_analysis(payload: AnalyzeRequest, request: Request) -> dict[str, A
             detail=f"Zbyt długi zakres. Maksimum to {MAX_RANGE_DAYS} dni (około 10 lat).",
         )
 
-    ha = _ha(request)
-    entity = await ha.get_entity(payload.entity_id)
-    attributes = entity.get("attributes") or {}
-    entity_name = attributes.get("friendly_name") or payload.entity_id
-
     start_local = datetime.combine(payload.start, time(0, 0), tzinfo=TZ)
     end_local = datetime.combine(payload.end + timedelta(days=1), time(0, 0), tzinfo=TZ)
     start_utc = start_local.astimezone(timezone.utc)
     end_utc = end_local.astimezone(timezone.utc)
 
-    samples, unit = await ha.get_statistics(payload.entity_id, start_utc, end_utc)
-    in_range = [
-        sample for sample in samples if start_utc <= sample.timestamp < end_utc
-    ]
-    if not in_range:
-        raise HTTPException(
-            status_code=400,
-            detail=(
+    warnings: list[str] = []
+    if payload.source == "invoice":
+        if payload.total_kwh is None:
+            raise HTTPException(status_code=400, detail="Wpisz zużycie energii z faktury w kWh.")
+        hours = int((end_utc - start_utc).total_seconds() // 3600)
+        if hours <= 0:
+            raise HTTPException(status_code=400, detail="Okres rozliczeniowy musi obejmować co najmniej jedną godzinę.")
+        entity_name, unit = "Dane z faktury (szacunek profilu)", "kWh"
+        in_range = [ConsumptionSample(timestamp=start_utc + timedelta(hours=i), kwh=payload.total_kwh / hours)
+                    for i in range(hours)]
+        warnings.append("Dane z faktury: całkowite zużycie rozłożono równomiernie na wszystkie godziny okresu. Podział na strefy, profil godzinowy i wynik taryf wielostrefowych są szacunkowe.")
+    else:
+        if not payload.entity_id:
+            raise HTTPException(status_code=400, detail="Wybierz encję zużycia energii.")
+        ha = _ha(request)
+        entity = await ha.get_entity(payload.entity_id)
+        attributes = entity.get("attributes") or {}
+        entity_name = attributes.get("friendly_name") or payload.entity_id
+        samples, unit = await ha.get_statistics(payload.entity_id, start_utc, end_utc)
+        in_range = [sample for sample in samples if start_utc <= sample.timestamp < end_utc]
+        if not in_range:
+            raise HTTPException(status_code=400, detail=(
                 f"Brak statystyk długoterminowych dla encji {payload.entity_id} "
                 "w wybranym zakresie. Upewnij się, że sensor ma atrybut "
                 "state_class: total_increasing i że Home Assistant zbiera dla niego "
                 "statystyki. Nowe encje pojawiają się w statystykach po pewnym czasie."
-            ),
-        )
-
-    warnings: list[str] = []
-    if unit.lower() != "kwh":
-        warnings.append(f"Statystyki encji są w {unit} — przeliczono je na kWh.")
+            ))
+        if unit.lower() != "kwh":
+            warnings.append(f"Statystyki encji są w {unit} — przeliczono je na kWh.")
 
     negative_count = sum(1 for sample in in_range if sample.kwh < -1e-9)
     if negative_count:
@@ -338,12 +344,12 @@ async def run_analysis(payload: AnalyzeRequest, request: Request) -> dict[str, A
 
     first = clean_samples[0].timestamp
     last = clean_samples[-1].timestamp
-    if first - start_utc > timedelta(hours=36):
+    if payload.source != "invoice" and first - start_utc > timedelta(hours=36):
         warnings.append(
             "Statystyki zaczynają się dopiero od "
             f"{first.astimezone(TZ).strftime('%d.%m.%Y %H:%M')}."
         )
-    if end_utc - last > timedelta(hours=48):
+    if payload.source != "invoice" and end_utc - last > timedelta(hours=48):
         warnings.append(
             "Ostatnie dane w statystykach pochodzą z "
             f"{last.astimezone(TZ).strftime('%d.%m.%Y %H:%M')}."
@@ -370,32 +376,34 @@ async def run_analysis(payload: AnalyzeRequest, request: Request) -> dict[str, A
     current_tariff_id = get_setting("sensor_tariff_id")
     current_tariff = next((t for t in all_tariffs if t["id"] == current_tariff_id), None)
     result = analyze(selected, clean_samples, payload.start, payload.end, current_tariff=current_tariff)
-    quality = consumption_coverage(in_range, payload.start, payload.end)
+    quality = consumption_coverage(in_range, payload.start, payload.end) if payload.source != "invoice" else None
     result['data_quality'] = quality
-    if quality['missing_hours']:
+    if quality and quality['missing_hours']:
         warnings.append(f"Dostępne {str(quality['percent']).replace('.', ',')}% zakończonych godzin: {quality['received_hours']} z {quality['expected_hours']}. "
                         f"Brakuje {quality['missing_hours']} godzin. Koszty mogą być zaniżone, a najtańsza taryfa może się zmienić po uzupełnieniu danych.")
-    if quality['invalid_samples']:
+    if quality and quality['invalid_samples']:
         warnings.append(f"Pominięto {quality['invalid_samples']} nieprawidłowych odczytów; nie potwierdzają one kompletności danych.")
-    if quality['duplicate_samples']:
+    if quality and quality['duplicate_samples']:
         warnings.append('Statystyki zawierają powtórzone godziny; uwzględniono ostatni prawidłowy odczyt dla każdej godziny.')
     result.update(
         {
-            "entity_id": payload.entity_id,
+            "entity_id": payload.entity_id or "invoice",
             "entity_name": entity_name,
             "unit": unit,
+            "data_source": payload.source,
+            "estimated_profile": payload.source == "invoice",
             "warnings": warnings,
             "created_at": utcnow(),
         }
     )
     analysis_id = save_analysis(
-        result, entity_id=payload.entity_id, entity_name=entity_name
+        result, entity_id=payload.entity_id or "invoice", entity_name=entity_name
     )
     result["id"] = analysis_id
     _LOGGER.info(
         "Analysis %s: %s, %s..%s, %.1f kWh, %d tariffs, cheapest=%s",
         analysis_id,
-        payload.entity_id,
+        payload.entity_id or "invoice",
         payload.start,
         payload.end,
         result["total_kwh"],

@@ -419,6 +419,8 @@ select.input {
   gap: 8px;
 }
 
+[hidden] { display: none !important; }
+
 .date-sep {
   color: var(--muted);
 }

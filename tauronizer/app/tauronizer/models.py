@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+import math
 from datetime import date
 from typing import Annotated, Any, Literal
 
@@ -107,18 +108,35 @@ class TariffUpdate(TariffCreate):
 
 
 class AnalyzeRequest(BaseModel):
-    entity_id: str = Field(min_length=3, max_length=255)
+    source: Literal["elicznik", "invoice"] = "elicznik"
+    entity_id: str | None = Field(default=None, min_length=3, max_length=255)
     start: date
     end: date
     tariff_ids: list[str] = Field(default_factory=list, max_length=20)
+    total_kwh: float | None = None
 
     @field_validator("entity_id")
     @classmethod
     def _validate_entity_id(cls, value: str) -> str:
+        if value is None:
+            return value
         value = value.strip()
         if not ENTITY_RE.match(value):
             raise ValueError("To nie wygląda na identyfikator encji Home Assistant.")
         return value
+
+    @field_validator("total_kwh", mode="before")
+    @classmethod
+    def _validate_total_kwh(cls, value: Any) -> Any:
+        if value is None:
+            return None
+        try:
+            number = float(value)
+        except (TypeError, ValueError):
+            raise ValueError("Zużycie wpisz jako liczbę w kWh, np. 245,6.") from None
+        if not math.isfinite(number) or number <= 0 or number > 10_000_000:
+            raise ValueError("Zużycie musi być większe od zera i nie może przekraczać 10 000 000 kWh.")
+        return number
 
 
 class TariffSummary(BaseModel):

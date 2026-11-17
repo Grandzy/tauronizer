@@ -178,6 +178,44 @@ def test_analyze_and_history(client: TestClient) -> None:
     assert client.get("/api/analyses").json()["analyses"] == []
 
 
+def test_invoice_analysis_uses_shared_tariff_calculation(client: TestClient) -> None:
+    response = client.post("/api/analyze", json={
+        "source": "invoice", "total_kwh": 240,
+        "start": "2026-01-05", "end": "2026-01-05",
+        "tariff_ids": ["preset_g11"],
+    })
+    assert response.status_code == 200, response.text
+    result = response.json()
+    assert result["total_kwh"] == 240
+    assert result["data_source"] == "invoice"
+    assert result["estimated_profile"] is True
+    assert result["data_quality"] is None
+    assert result["sample_count"] == 24
+    assert "równomiernie" in result["warnings"][0]
+    assert result["tariffs"][0]["total_pln"] is not None
+
+
+def test_invoice_analysis_rejects_missing_or_invalid_consumption(client: TestClient) -> None:
+    missing = client.post("/api/analyze", json={
+        "source": "invoice", "start": "2026-01-05", "end": "2026-01-05",
+    })
+    assert missing.status_code == 400
+    assert "kWh" in missing.json()["detail"]
+
+    negative = client.post("/api/analyze", json={
+        "source": "invoice", "total_kwh": -2,
+        "start": "2026-01-05", "end": "2026-01-05",
+    })
+    assert negative.status_code == 422
+    assert "większe od zera" in negative.json()["detail"][0]["msg"]
+
+    reversed_period = client.post("/api/analyze", json={
+        "source": "invoice", "total_kwh": 20,
+        "start": "2026-01-06", "end": "2026-01-05",
+    })
+    assert reversed_period.status_code == 400
+
+
 def test_analyze_rejects_future_and_reversed_ranges(client: TestClient) -> None:
     client.app.state.ha = FakeHA(make_samples())
     reversed_range = client.post(

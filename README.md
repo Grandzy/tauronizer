@@ -24,6 +24,23 @@ W analizie możesz włączyć net-metering (0,8/0,7) albo net-billing (RCEm/RCE)
 wybrać licznik eksportu i dodać saldo początkowe. Porównanie uwzględnia miesięczne
 rozliczenie oraz pozostały depozyt lub opust. [Konfiguracja i ograniczenia](docs/prosumenci.md).
 
+## Wybór presetów (DEV)
+
+Nowa instalacja zaczyna z pustą listą taryf. W **Taryfy** wybierz **Dodaj presety
+TAURON**, **Dodaj presety PGE** lub **Dodaj presety ENEA**, albo utwórz własną taryfę.
+Przycisk dodaje tylko brakujące presety danego operatora. Powtórne dodanie nie
+zmienia istniejących definicji i nie tworzy duplikatów.
+
+Aktualizacja dodatku nie usuwa, nie nadpisuje ani nie dopisuje taryf. Zachowuje
+całą konfigurację, także nazwy, opisy, ręcznie wpisane ceny, kopie i edytowane
+presety. Taryfy istniejące przed tą zmianą również pozostają. Usunięty preset
+nie wraca po aktualizacji. Nowe presety lub nowe stawki nie są automatycznie
+wprowadzane do bazy użytkownika.
+
+Aby ponownie wczytać bazową definicję konkretnego presetu, usuń wyłącznie ten
+preset, a następnie dodaj presety jego operatora. Pozostałe definicje pozostaną
+bez zmian. Jeśli chcesz zachować poprzedni wariant, najpierw go zduplikuj.
+
 ## Presety PGE i ENEA (DEV)
 
 Dodano PGE G11, G12, G12w i G12n (PGE Obrót + PGE Dystrybucja) oraz ENEA G11,
@@ -225,10 +242,9 @@ rejestrze). Obsługiwane architektury: `amd64` i `aarch64`.
 
 1. W sklepie dodatków odśwież repozytorium i otwórz **Tauronizer**.
 2. Wykonaj kopię zapasową dodatku, a następnie wybierz **Aktualizuj**.
-3. Po aktualizacji sprawdź stawki w zakładce **Taryfy**. Niezmienione presety
-   zostaną odświeżone automatycznie. Edytowane presety i własne taryfy
-   zachowują poprzednie wartości — uaktualnij je ręcznie lub wybierz
-   **Przywróć presety**, aby zastąpić edycje presetów nowymi wartościami.
+3. Po aktualizacji sprawdź stawki w zakładce **Taryfy**. Wszystkie zapisane
+   definicje zachowują poprzednie wartości. Nowe presety dodaj przyciskiem
+   wybranego operatora; ceny w istniejących taryfach możesz zmienić ręcznie.
 4. Sprawdź liczbę faz i opłaty miesięczne. Abonament od 1.10.2026 nie jest naliczany (0 zł). W sekcji opłaty mocowej wpisz pobór
    kwalifikujący z odczytu Taurona albo pozostaw pole puste dla szacunku.
    Usuń wcześniejszą opłatę mocową z opłat stałych lub zmiennych, jeżeli
@@ -251,13 +267,12 @@ rejestrze). Obsługiwane architektury: `amd64` i `aarch64`.
 
 ## Jak korzystać
 
-1. **Analiza** — wybierz encję energii (sensor z `device_class: energy` lub
-   `state_class: total_increasing`), zakres dat i taryfy do porównania.
-2. Kliknij **Analizuj zużycie**. Wynik pokaże najtańszą taryfę, koszt w
-   okresie, szacunek roczny oraz rozbicie na strefy i składniki rachunku.
-3. **Taryfy** — dostosuj stawki do swojej umowy. Możesz edytować preset
-   (zmiany są lokalne), zduplikować go jako własną taryfę albo utworzyć
-   nową. **Przywróć presety** cofa edycje presetów do wartości domyślnych.
+1. **Taryfy** — dodaj presety potrzebnego operatora lub własną taryfę. Każdą
+   definicję możesz edytować i duplikować. Zapisane taryfy są zachowywane po aktualizacji.
+2. **Ustawienia** — wybierz encję energii (sensor z `device_class: energy` lub
+   `state_class: total_increasing`) i ewentualnie skonfiguruj prosumenta.
+3. **Analiza** — ustaw zakres dat i zaznacz taryfy do porównania, a następnie
+   kliknij **Analizuj zużycie**.
 4. **Historia** — podgląd i usuwanie zapisanych analiz.
 
 ### Strefy czasowe
@@ -332,10 +347,10 @@ Presety porównują profil historyczny według **jednego skonfigurowanego cennik
 nie rekonstruują faktur ani zmian stawek w trakcie roku (w tym styczniowej jakościowej).
 Wszystkie opłaty miesięczne, również mocową, szacujemy proporcjonalnie do dni;
 faktura Taurona może inaczej rozliczać niepełne miesiące, zwłaszcza abonament.
-Aktualizacja odświeża niezmienione presety; własne taryfy i edytowane presety
-zachowują dotychczasowe wartości. Aby przejść na nowe stawki w edytowanych
-presetach, użyj „Przywróć presety” lub zmień je ręcznie. Zapisane analizy pozostają
-historycznymi wynikami — po aktualizacji wykonaj nową analizę.
+Aktualizacja zachowuje wszystkie zapisane taryfy bez zmiany stawek, nazw i opisów.
+Nowe stawki w istniejącej taryfie wprowadź ręcznie. Dodawanie presetów operatora
+uzupełnia wyłącznie brakujące definicje. Zapisane analizy pozostają historycznymi
+wynikami — po zmianie stawek wykonaj nową analizę.
 
 Źródła:
 

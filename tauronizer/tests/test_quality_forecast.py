@@ -76,6 +76,7 @@ def test_coverage_caps_gap_details_but_keeps_all_counts():
 def database(tmp_path,monkeypatch):
     monkeypatch.setenv('DATA_DIR',str(tmp_path))
     db.init_db()
+    db.add_presets('tauron')
     return db.get_tariff('preset_g14dynamic')
 
 

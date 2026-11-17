@@ -88,6 +88,7 @@ def test_standard_tariff_energy_vat_and_excise_added_once():
 def test_sources_survive_validation_edits_and_duplicate(tmp_path,monkeypatch):
     monkeypatch.setenv('DATA_DIR',str(tmp_path))
     db.init_db()
+    db.add_presets('pge')
     tariff=db.get_tariff('preset_pge_g12')
     payload=TariffCreate(name='Moja PGE',description=tariff['description'],config=tariff['config'])
     payload.config.zones[0].energy_net=.7
@@ -99,9 +100,10 @@ def test_sources_survive_validation_edits_and_duplicate(tmp_path,monkeypatch):
     assert duplicate['config']['reference']==tariff['config']['reference']
 
 
-def test_upgrade_adds_suppliers_without_overwriting_custom_tariffs(tmp_path,monkeypatch):
+def test_upgrade_never_adds_unselected_suppliers_or_overwrites_custom_tariffs(tmp_path,monkeypatch):
     monkeypatch.setenv('DATA_DIR',str(tmp_path))
     db.init_db()
+    db.add_presets('tauron')
     custom=copy.deepcopy(db.get_tariff('preset_g11')['config'])
     custom['zones'][0]['energy_net']=.9
     db.update_tariff('preset_g11','Moja taryfa','Opis',custom)
@@ -111,8 +113,8 @@ def test_upgrade_adds_suppliers_without_overwriting_custom_tariffs(tmp_path,monk
     db.init_db()
     assert db.get_tariff('preset_g11')['config']==custom
     assert db.get_tariff('preset_g11')['name']=='Moja taryfa'
-    assert len(db.list_tariffs())==12
-    assert db.get_tariff('preset_pge_g12n') is not None
+    assert len(db.list_tariffs())==5
+    assert db.get_tariff('preset_pge_g12n') is None
 
 
 def test_default_zones_and_fees_are_independent():

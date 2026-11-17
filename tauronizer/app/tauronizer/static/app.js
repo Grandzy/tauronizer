@@ -13,6 +13,7 @@ const state = {
   config: null,
   entities: [],
   tariffs: [],
+  presetOperators: [],
   analysis: null,
   analyses: [],
   selectedTariffs: new Set(),
@@ -450,6 +451,9 @@ async function loadTariffs() {
   try {
     const data = await api('api/tariffs');
     state.tariffs = data.tariffs || [];
+    $('#kompas-panel').hidden = !state.tariffs.some(tariff => tariff.config.zone_source === 'pse_kompas');
+    state.presetOperators = data.preset_operators || [];
+    renderPresetOperators();
     const ids = new Set(state.tariffs.map((tariff) => tariff.id));
 
     if (!state.selectionInitialized) {
@@ -511,6 +515,7 @@ function updateToggleLabel() {
   if (!button) return;
   const allSelected = state.tariffs.length > 0
     && state.tariffs.every((tariff) => state.selectedTariffs.has(tariff.id));
+  button.disabled = state.tariffs.length === 0;
   button.textContent = allSelected ? 'Odznacz wszystkie' : 'Zaznacz wszystkie';
 }
 
@@ -658,6 +663,10 @@ async function handleAnalyze(event) {
   const end = $('#date-end').value;
   const tariffIds = Array.from(state.selectedTariffs);
 
+  if (!state.tariffs.length) {
+    switchTab('tariffs');
+    return toast('Dodaj własną taryfę lub presety wybranego operatora.', 'info');
+  }
   if (!entityId) {
     switchTab('settings');
     $('#entity-select').focus();
@@ -1232,13 +1241,34 @@ function tariffReferenceHelp(config) {
   </details>`;
 }
 
+function renderPresetOperators() {
+  $('#preset-operators').innerHTML = state.presetOperators.map(operator =>
+    `<button type="button" class="button ghost" data-add-presets="${escapeHtml(operator.id)}" ${operator.missing ? '' : 'disabled'}>
+      ${operator.missing ? `Dodaj presety ${escapeHtml(operator.name)} (${operator.missing})` : `${escapeHtml(operator.name)} — dodano wszystkie`}</button>`).join('');
+}
+
+async function handlePresetImport(event) {
+  const button = event.target.closest('[data-add-presets]');
+  if (!button || button.disabled) return;
+  $$('#preset-operators button').forEach(item => { item.disabled = true; });
+  $('#preset-import-status').textContent = 'Dodaję presety…';
+  try {
+    const result = await api(`api/tariffs/presets/${encodeURIComponent(button.dataset.addPresets)}`, {method:'POST'});
+    $('#preset-import-status').textContent = `Dodano ${result.added} ${plural(result.added, 'preset', 'presety', 'presetów')}. Istniejące taryfy pozostawiono bez zmian.`;
+    await loadTariffs();
+  } catch (error) {
+    $('#preset-import-status').textContent = error.message;
+    toast(error.message, 'error');
+  } finally { renderPresetOperators(); }
+}
+
 function renderTariffGrid() {
   const grid = $('#tariff-grid');
   if (!state.tariffs.length) {
     grid.innerHTML = `<div class="empty-state card">
       <div class="empty-icon">🧾</div>
       <h3>Brak zdefiniowanych taryf</h3>
-      <p class="muted">Dodaj własną taryfę albo przywróć presety TAURON, PGE i ENEA.</p>
+      <p class="muted">Wybierz operatora powyżej, aby dodać jego presety, albo utwórz własną taryfę.</p>
       <button class="button primary" type="button" id="empty-new-tariff">+ Nowa taryfa</button>
     </div>`;
     $('#empty-new-tariff')?.addEventListener('click', () => openTariffEditor(null));
@@ -1451,7 +1481,7 @@ function openTariffEditor(tariff) {
         <div>
           <h2 id="modal-title">${tariff ? 'Edytuj taryfę' : 'Nowa taryfa'}</h2>
           <p>${tariff && tariff.is_preset
-            ? 'Edytujesz wbudowany preset. W każdej chwili możesz przywrócić domyślne wartości.'
+            ? 'Edytujesz dodany preset. Twoje zmiany pozostają po aktualizacji dodatku.'
             : 'Stawki podawaj netto, energię bez akcyzy. Akcyza jest dodawana osobno, VAT na końcu.'}</p>
         </div>
         <button class="icon-button" type="button" data-close aria-label="Zamknij">✕</button>
@@ -1871,16 +1901,7 @@ function bindEvents() {
   $('#refresh-history').addEventListener('click', loadHistory);
 
   $('#new-tariff').addEventListener('click', () => openTariffEditor(null));
-  $('#restore-presets').addEventListener('click', async () => {
-    if (!window.confirm('Przywrócić domyślne presety TAURON, PGE i ENEA? Zmiany w presetach zostaną nadpisane.')) return;
-    try {
-      const result = await api('api/tariffs/restore-presets', { method: 'POST' });
-      toast(`Przywrócono ${result.restored} ${plural(result.restored, 'preset', 'presety', 'presetów')}.`, 'success');
-      await loadTariffs();
-    } catch (error) {
-      toast(error.message, 'error');
-    }
-  });
+  $('#preset-operators').addEventListener('click', handlePresetImport);
 
   window.addEventListener('hashchange', () => {
     switchTab(window.location.hash.replace('#', '') || 'analysis');

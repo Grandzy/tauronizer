@@ -20,6 +20,7 @@ def raw(instant='2026-01-09 16:00', level=0, day='2026-01-09', pub='2026-01-08 1
 def database(tmp_path, monkeypatch):
     monkeypatch.setenv('DATA_DIR', str(tmp_path))
     db.init_db()
+    db.add_presets('tauron')
     return tmp_path
 
 

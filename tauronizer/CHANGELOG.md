@@ -2,9 +2,12 @@
 
 ## Niewydane
 
+- Nowe instalacje startują bez presetów. W zakładce Taryfy osobne przyciski dodają presety TAURON, PGE lub ENEA, tylko brakujące i bez duplikatów.
+- Aktualizacje nie dopisują, nie usuwają i nie nadpisują zapisanych taryf. Zachowane są własne definicje, kopie oraz zmiany cen, nazw i opisów presetów, także w starych bazach bez hashy.
+- Usunięto zbiorcze przywracanie presetów; dawny endpoint zwraca komunikat zamiast nadpisywać konfigurację.
+
 - Siedem edytowalnych presetów standardowych 2026: PGE G11/G12/G12w/G12n i ENEA G11/G12/G12w. Pary sprzedawca–dystrybutor, stawki netto bez akcyzy, domyślnie 3 fazy.
 - Źródła, daty i założenia w kartach oraz edytorze nowych presetów; informacje pozostają po edycji i skopiowaniu taryfy. Sezonowe godziny PGE, nocna 1–5 G12n i szczyt 6–21 ENEA G12w. ENEA G12 jawnie opisuje przykładowe godziny wymagające sprawdzenia z PPE.
-- Aktualizacja bazy automatycznie dodaje nowe presety z zachowaniem taryf zmodyfikowanych przez użytkownika.
 
 - Zakładka „Ustawienia” zastępuje „Sensory”: na górze wybór licznika energii i konfiguracja prosumenta, poniżej ustawienia i statusy sensorów Home Assistant. Analiza zawiera zakres dat, wybór taryf i podsumowanie używanych ustawień.
 

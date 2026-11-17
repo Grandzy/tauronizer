@@ -11,7 +11,7 @@ import os
 from contextlib import asynccontextmanager
 from datetime import date, datetime, time, timedelta, timezone
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.responses import FileResponse, JSONResponse, Response
@@ -33,7 +33,8 @@ from .db import (
     init_db,
     list_analyses,
     list_tariffs,
-    restore_presets,
+    add_presets,
+    preset_catalog,
     save_analysis,
     update_tariff,
     utcnow,
@@ -198,7 +199,7 @@ async def entities(request: Request) -> dict[str, Any]:
 
 @app.get("/api/tariffs")
 async def tariffs() -> dict[str, Any]:
-    return {"tariffs": list_tariffs()}
+    return {"tariffs": list_tariffs(), "preset_operators": preset_catalog()}
 
 
 @app.post("/api/tariffs", status_code=201)
@@ -207,11 +208,18 @@ async def tariff_create(payload: TariffCreate) -> dict[str, Any]:
     return create_tariff(payload.name.strip(), payload.description.strip(), config)
 
 
-@app.post("/api/tariffs/restore-presets")
-async def tariff_restore_presets(request: Request) -> dict[str, int]:
-    count = restore_presets()
+@app.post('/api/tariffs/presets/{operator}')
+async def tariff_add_presets(operator: Literal['tauron', 'pge', 'enea'], request: Request) -> dict[str, int]:
+    result = add_presets(operator)
+    _LOGGER.info('Preset import %s: added=%d skipped=%d', operator, result['added'], result['skipped'])
     request.app.state.sensors.wake.set()
-    return {"restored": count}
+    return result
+
+
+@app.post('/api/tariffs/restore-presets')
+async def tariff_restore_presets_removed():
+    # A cached old frontend must not trigger the former destructive reset.
+    raise HTTPException(410, 'Wybierz operatora w zakładce Taryfy. Zbiorcze przywracanie presetów zostało wyłączone.')
 
 
 @app.put("/api/tariffs/{tariff_id}")
@@ -394,7 +402,7 @@ async def run_analysis(payload: AnalyzeRequest, request: Request) -> dict[str, A
     if not selected:
         raise HTTPException(
             status_code=400,
-            detail="Brak taryf do porównania. Dodaj taryfę lub przywróć presety.",
+            detail="Brak taryf do porównania. Dodaj własną taryfę lub presety operatora w zakładce Taryfy.",
         )
 
     current_tariff_id = get_setting("sensor_tariff_id")

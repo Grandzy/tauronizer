@@ -19,6 +19,7 @@ from tauronizer.tariffs import TZ
 def database(tmp_path, monkeypatch):
     monkeypatch.setenv('DATA_DIR', str(tmp_path))
     db.init_db()
+    db.add_presets('tauron')
 
 
 def tariff(id='simple', energy=1, distribution=.5):

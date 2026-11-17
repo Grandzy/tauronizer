@@ -32,6 +32,7 @@ class FakeMQTT:
 def sensor_client(tmp_path, monkeypatch):
     monkeypatch.setenv('DATA_DIR', str(tmp_path))
     with TestClient(app) as client:
+        db.add_presets('tauron')
         fake = FakeMQTT()
         app.state.sensors.ha = fake
         yield client, fake
@@ -139,6 +140,7 @@ def test_ha_mqtt_action_request(monkeypatch):
 def test_worker_runs_and_wakes_without_open_browser(tmp_path, monkeypatch):
     monkeypatch.setenv('DATA_DIR', str(tmp_path))
     db.init_db()
+    db.add_presets('tauron')
     db.set_setting('sensor_tariff_id', 'preset_g12')
     async def scenario():
         notified = asyncio.Event()

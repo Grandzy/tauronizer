@@ -18,8 +18,8 @@
       }
     })();
   </script>
-  <link rel="stylesheet" href="static/styles.css?v=0.4.8-supplier-presets">
-  <script defer src="static/app.js?v=0.4.8-supplier-presets"></script>
+  <link rel="stylesheet" href="static/styles.css?v=0.4.8-opt-in-presets">
+  <script defer src="static/app.js?v=0.4.8-opt-in-presets"></script>
 </head>
 <body>
   <header class="topbar">
@@ -137,13 +137,18 @@
           <p class="muted">Presety TAURON, PGE i ENEA są punktem wyjścia — stawki możesz edytować lub skopiować i stworzyć własną taryfę.</p>
         </div>
         <div class="actions">
-          <button class="button ghost" type="button" id="restore-presets">Przywróć presety</button>
           <button class="button primary" type="button" id="new-tariff">+ Nowa taryfa</button>
         </div>
       </div>
 
+      <article class="card preset-picker">
+        <h3>Dodaj presety operatora</h3>
+        <p class="muted small">Wybierz tylko potrzebne taryfy. Dodajemy brakujące presety — zapisane taryfy pozostają bez zmian, również po aktualizacji dodatku.</p>
+        <div class="actions" id="preset-operators"><span class="muted small">Ładowanie operatorów…</span></div>
+        <p class="muted small" id="preset-import-status" role="status"></p>
+      </article>
       <div class="notice" id="tariff-disclaimer"></div>
-      <div class="notice" style="margin-bottom: 20px">
+      <div class="notice" id="kompas-panel" style="margin-bottom: 20px" hidden>
         <h3>G14dynamic — dane Kompasu PSE</h3>
         <p id="kompas-status" role="status">Ładowanie stanu lokalnej bazy…</p>
         <p class="muted small">Historia jest pobierana raz w tle i wznawiana po przerwaniu. Potem aktualizowane są nowe dni oraz ostatnie korekty PSE.

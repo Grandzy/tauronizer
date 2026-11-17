@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import hashlib
 import json
 import os
 import sqlite3
@@ -12,7 +11,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Iterator
 
-from .tariffs import PRESETS, PRESET_VERSION
+from .tariffs import PRESET_OPERATORS, PRESET_VERSION, presets_for_operator
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS tariffs (
@@ -97,89 +96,37 @@ def _connect() -> Iterator[sqlite3.Connection]:
         connection.close()
 
 
-def _config_hash(config: Any) -> str:
-    payload = json.dumps(config, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
-    return hashlib.sha256(payload.encode("utf-8")).hexdigest()
-
-
-def _preset_hashes(connection: sqlite3.Connection) -> dict[str, str]:
-    raw = _get_setting(connection, "preset_hashes")
-    if not raw:
-        return {}
-    try:
-        value = json.loads(raw)
-    except (TypeError, ValueError):
-        return {}
-    return value if isinstance(value, dict) else {}
-
-
 def init_db() -> None:
+    """Create/migrate storage without installing or mutating any saved tariff.
+
+    This also applies to legacy databases with missing hashes or seed markers.
+    Catalog updates never restore deleted presets or overwrite user changes.
+    """
     with _connect() as connection:
         connection.executescript(SCHEMA)
         with connection:
-            seeded = _get_setting(connection, "presets_seeded")
-            if seeded != "1":
-                for preset in PRESETS:
-                    _insert_preset(connection, preset)
-                _set_setting(connection, "presets_seeded", "1")
-                _store_preset_hashes(connection)
-            elif _get_setting(connection, "presets_version") != str(PRESET_VERSION):
-                _upgrade_presets(connection)
-            _set_setting(connection, "presets_version", str(PRESET_VERSION))
-            _set_setting(connection, "schema_version", "3")
+            _set_setting(connection, 'presets_version', str(PRESET_VERSION))
+            _set_setting(connection, 'schema_version', '3')
 
 
-def _upgrade_presets(connection: sqlite3.Connection) -> None:
-    """Refresh built-in presets after an add-on update.
-
-    A preset is only overwritten when its stored config still matches the
-    hash of the last shipped version, i.e. the user has not edited it.
-    Customised presets are left untouched.
-    """
-
-    recorded = _preset_hashes(connection)
-    now = utcnow()
-    for preset in PRESETS:
-        preset_id = f"preset_{preset['id']}"
-        row = connection.execute(
-            "SELECT config FROM tariffs WHERE id = ?", (preset_id,)
-        ).fetchone()
-        if row is None:
-            _insert_preset(connection, preset)
-            continue
-        try:
-            stored_config = json.loads(row["config"])
-        except (TypeError, ValueError):
-            stored_config = None
-        if recorded and _config_hash(stored_config) != recorded.get(preset["id"]):
-            continue  # user-modified preset: keep it
-        connection.execute(
-            "UPDATE tariffs SET name = ?, description = ?, preset_id = ?, "
-            "is_preset = 1, config = ?, updated_at = ? WHERE id = ?",
-            (
-                preset["name"],
-                preset["description"],
-                preset["id"],
-                json.dumps(preset["config"], ensure_ascii=False),
-                now,
-                preset_id,
-            ),
-        )
-    _store_preset_hashes(connection)
+def preset_catalog() -> list[dict[str, Any]]:
+    with _connect() as connection:
+        ids = {row['id'] for row in connection.execute('SELECT id FROM tariffs')}
+    result = []
+    for operator, name in PRESET_OPERATORS.items():
+        presets = presets_for_operator(operator)
+        installed = sum(f"preset_{preset['id']}" in ids for preset in presets)
+        result.append(dict(id=operator, name=name, total=len(presets), installed=installed,
+                           missing=len(presets)-installed))
+    return result
 
 
-def _store_preset_hashes(connection: sqlite3.Connection) -> None:
-    hashes: dict[str, str] = {}
-    for preset in PRESETS:
-        row = connection.execute(
-            "SELECT config FROM tariffs WHERE id = ?", (f"preset_{preset['id']}",)
-        ).fetchone()
-        if row is None:
-            continue
-        # Record the shipped definition, never a customised stored tariff.
-        # Otherwise a second upgrade would mistake user edits for a preset.
-        hashes[preset["id"]] = _config_hash(preset["config"])
-    _set_setting(connection, "preset_hashes", json.dumps(hashes, sort_keys=True))
+def add_presets(operator: str) -> dict[str, int]:
+    """Explicit opt-in: insert only missing IDs, including when called repeatedly."""
+    presets = presets_for_operator(operator)
+    with _connect() as connection, connection:
+        added = sum(_insert_preset(connection, preset) for preset in presets)
+    return {'added': added, 'skipped': len(presets)-added}
 
 
 def _get_setting(connection: sqlite3.Connection, key: str) -> str | None:
@@ -195,9 +142,9 @@ def _set_setting(connection: sqlite3.Connection, key: str, value: str) -> None:
     )
 
 
-def _insert_preset(connection: sqlite3.Connection, preset: dict[str, Any]) -> None:
+def _insert_preset(connection: sqlite3.Connection, preset: dict[str, Any]) -> bool:
     now = utcnow()
-    connection.execute(
+    cursor = connection.execute(
         "INSERT OR IGNORE INTO tariffs"
         "(id, name, description, preset_id, is_preset, config, created_at, updated_at) "
         "VALUES(?, ?, ?, ?, 1, ?, ?, ?)",
@@ -211,6 +158,8 @@ def _insert_preset(connection: sqlite3.Connection, preset: dict[str, Any]) -> No
             now,
         ),
     )
+
+    return cursor.rowcount > 0
 
 
 def _row_to_tariff(row: sqlite3.Row) -> dict[str, Any]:
@@ -312,33 +261,6 @@ def duplicate_tariff(tariff_id: str) -> dict[str, Any] | None:
         preset_id=None,
         is_preset=False,
     )
-
-
-def restore_presets() -> int:
-    now = utcnow()
-    with _connect() as connection, connection:
-        for preset in PRESETS:
-            preset_id = f"preset_{preset['id']}"
-            existing = connection.execute(
-                "SELECT id FROM tariffs WHERE id = ?", (preset_id,)
-            ).fetchone()
-            if existing:
-                connection.execute(
-                    "UPDATE tariffs SET name = ?, description = ?, preset_id = ?, "
-                    "is_preset = 1, config = ?, updated_at = ? WHERE id = ?",
-                    (
-                        preset["name"],
-                        preset["description"],
-                        preset["id"],
-                        json.dumps(preset["config"], ensure_ascii=False),
-                        now,
-                        preset_id,
-                    ),
-                )
-            else:
-                _insert_preset(connection, preset)
-        _store_preset_hashes(connection)
-    return len(PRESETS)
 
 
 def save_analysis(

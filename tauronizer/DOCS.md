@@ -136,12 +136,22 @@ niedawno.
 
 ## Taryfy
 
+Nowa instalacja nie zawiera żadnych taryf. Przyciski **Dodaj presety TAURON**,
+**Dodaj presety PGE**, **Dodaj presety ENEA** dodają tylko brakujące definicje
+wybranego operatora. Możesz też wybrać **Nowa taryfa**. Ponowne dodanie presetów
+nie tworzy duplikatów i nie zmienia zapisanych taryf.
+
+Aktualizacje i restarty zachowują wszystkie istniejące taryfy: własne, kopie,
+zmienione presety i same zmiany nazw lub opisów. Nie dopisują nowych presetów,
+nie odtwarzają usuniętych i nie odświeżają automatycznie cen.
+
 - **G11, G12, G12w, G13**: ceny TAURON Sprzedaż 2026 (bez obszaru gliwickiego
   i ofert rynkowych), dystrybucja ze stawką jakościową od 01.02.2026.
   Ceny netto, energia bez akcyzy. Domyślnie 3 fazy i abonament 0 zł (od 1.10.2026);
   wartości i źródła opisuje [README](https://github.com/direk/tauronizer#stawki-tauron-2026).
-- **Edytuj** zmienia wybraną taryfę lokalnie. Zmiany presetów można cofnąć
-  przyciskiem **Przywróć presety**.
+- **Edytuj** zmienia wybraną taryfę lokalnie; aktualizacje nie nadpisują zmian.
+  Aby wczytać bazowy preset ponownie, usuń tę definicję i dodaj presety jej
+  operatora. Zduplikuj ją wcześniej, jeśli chcesz zachować poprzedni wariant.
 - **Duplikuj** tworzy własną kopię, której aktualizacje dodatku nie zmieniają.
 - **Nowa taryfa** pozwala zdefiniować dowolne strefy.
 
@@ -178,8 +188,8 @@ W opłatach stałych zmień sieciową na 7,38 zł dla 1 fazy lub 10,86 zł dla 3
 Abonament od 1.10.2026 nie jest naliczany: 0 zł. Historyczne stawki dla cyklu 1/2/6/12 miesięcy wynosiły 4,56/2,28/0,76/0,38 zł netto.
 Opłatę handlową wpisz z umowy (w taryfie sprzedawcy 0 zł).
 
-Aktualizacja zachowuje edytowane presety i własne taryfy; ich stawki popraw
-ręcznie lub użyj „Przywróć presety”. Zapisane wyniki nie są przeliczane.
+Aktualizacja zachowuje wszystkie zapisane taryfy bez zmian; stawki popraw
+ręcznie. Przyciski operatorów dodają tylko brakujące presety. Zapisane wyniki nie są przeliczane.
 
 ## Metodologia
 

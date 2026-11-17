@@ -536,7 +536,16 @@ PRESETS.append({'id': 'g14dynamic', 'name': 'Tauron G14dynamic',
     'description': 'Cztery strefy dystrybucji według godzinowych wskazań Kompasu PSE. Cena energii stała według cennika Prąd ze zmienną dystrybucją 2026; porównanie wymaga danych Kompasu w lokalnej bazie.',
     'config': _g14})
 PRESETS.extend(SUPPLIER_PRESETS)
-PRESET_VERSION = 7
+PRESET_VERSION = 8
+PRESET_OPERATORS = {'tauron': 'TAURON', 'pge': 'PGE', 'enea': 'ENEA'}
+
+
+def presets_for_operator(operator: str) -> list[dict[str, Any]]:
+    if operator not in PRESET_OPERATORS:
+        raise ValueError('Nieznany operator presetów.')
+    return [preset for preset in PRESETS if (
+        preset['id'] in {'g11', 'g12', 'g12w', 'g13', 'g14dynamic'} if operator == 'tauron'
+        else preset['id'].startswith(operator + '_'))]
 
 
 def preset_by_id(preset_id: str) -> dict[str, Any] | None:

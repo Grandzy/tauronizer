@@ -5,6 +5,10 @@ Zweryfikowano 17.11.2026. Presety przedstawiają aktualny pakiet stawek na okres
 oraz brak abonamentu dystrybucyjnego od października. Nie odtwarzają historycznych
 zmian cenników — skonfigurowane stawki obowiązują w całej analizie.
 
+Presety dodajesz na żądanie przyciskami PGE lub ENEA w zakładce Taryfy. Nowa
+instalacja ma pustą listę. Aktualizacja nie dodaje presetów i nie zmienia
+zapisanych stawek; ponowny import uzupełnia tylko brakujące definicje.
+
 Każdy preset można edytować albo skopiować: ceny energii i dystrybucji, godziny,
 opłaty stałe, zmienne, mocową, akcyzę i VAT. Źródła pozostają informacją o bazowym
 presecie i są zachowywane po skopiowaniu lub edycji. W aplikacji znajdziesz je

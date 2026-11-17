@@ -107,6 +107,8 @@ class TariffConfig(BaseModel):
     reference: TariffReference | None = None
     zones: list[Zone] = Field(min_length=1, max_length=16)
     zone_source: Literal['schedule', 'pse_kompas'] = 'schedule'
+    energy_source: Literal['fixed', 'enea_dynamic', 'pge_dynamic'] = 'fixed'
+    energy_markup_net: float = Field(default=.0855, ge=0, le=10, allow_inf_nan=False)
     fixed_fees: list[FixedFee] = Field(default_factory=list, max_length=20)
     variable_fees: list[VariableFee] = Field(default_factory=list, max_length=20)
     capacity_fee: CapacityFee | None = None

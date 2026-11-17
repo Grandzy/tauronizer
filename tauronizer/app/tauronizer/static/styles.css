@@ -1988,3 +1988,5 @@ select.input {
 #preset-import-status:empty { display: none; }
 
 #kompas-panel[hidden] { display: none; }
+
+#purchase-prices-panel[hidden], #energy-markup-field[hidden] { display: none; }

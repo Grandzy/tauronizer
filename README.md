@@ -48,6 +48,17 @@ G12 i G12w (ENEA S.A. + ENEA Operator). Są edytowalne i można je kopiować.
 Źródła, daty i założenia są dostępne w kartach taryf. [Pełne stawki i warianty godzin](docs/presety-pge-enea-2026.md).
 Domyślnie 3 fazy; ENEA G12 wymaga sprawdzenia godzin własnego licznika.
 
+## Ceny dynamiczne ENEA / PGE (DEV)
+
+Dostępne są ENEA G13active i G12sezON połączone z ofertą Ceny Dynamiczne,
+ENEA G11 oraz PGE G11 z cenami dynamicznymi, a także ograniczony wariant G12e
+poza obszarem specjalnego harmonogramu. Ceny zakupu z API są zapisywane w bazie
+i wspólne dla analizy oraz sensora ceny. Presety i źródło energii można edytować.
+
+**Ograniczenia:** API nie rozstrzygają godzin w dobach zmiany czasu; te doby
+pozostają bez wyceny. Odrębny obszar elastyczny PGE G12e nie jest automatycznie
+obsługiwany. [Oferty, źródła, historia i ograniczenia](docs/ceny-dynamiczne-enea-pge.md).
+
 ## Przykładowa analiza
 
 ![Przykładowa analiza zużycia i porównanie taryf w Tauronizerze](docs/images/przykladowa-analiza.jpg)

@@ -5,7 +5,8 @@ from datetime import datetime, time, timedelta, timezone
 
 from .db import kompas_levels_between
 from .kompas import utc_key
-from .tariffs import TZ, compile_zones
+from .tariffs import TZ, compile_zones, TariffValidationError
+from .purchase_prices import energy_price
 
 
 def dynamic_schedule(tariff, now=None):
@@ -33,10 +34,16 @@ def dynamic_schedule(tariff, now=None):
             zone = zones.get(levels.get(utc_key(cursor)))
             total += 1
             available += zone is not None
+            price = None
+            if zone:
+                try:
+                    price = round((energy_price(config, zone, cursor) + zone.distribution_net + extra) * vat, 6)
+                except TariffValidationError:
+                    pass
             hour = {'start': cursor.isoformat(), 'end': (cursor + timedelta(hours=1)).isoformat(),
                     'level': zone.kompas_level if zone else None,
                     'zone_id': zone.id if zone else None, 'zone_name': zone.name if zone else None,
-                    'price_gross': round((zone.energy_net + zone.distribution_net + extra) * vat, 6) if zone else None}
+                    'price_gross': price}
             hours.append(hour)
             if segments and segments[-1]['level'] == hour['level']:
                 segments[-1]['end'] = hour['end']

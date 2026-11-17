@@ -20,6 +20,7 @@ sys.path.insert(0, str(ROOT / "app"))
 os.environ.setdefault("DATA_DIR", str(ROOT / "data-preview"))
 os.environ.setdefault("KOMPAS_AUTO_SYNC", "0")
 os.environ.setdefault("EXPORT_PRICES_AUTO_SYNC", "0")
+os.environ.setdefault("PURCHASE_PRICES_AUTO_SYNC", "0")
 
 import uvicorn  # noqa: E402
 

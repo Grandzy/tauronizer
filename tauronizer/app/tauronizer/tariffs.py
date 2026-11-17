@@ -536,7 +536,7 @@ PRESETS.append({'id': 'g14dynamic', 'name': 'Tauron G14dynamic',
     'description': 'Cztery strefy dystrybucji według godzinowych wskazań Kompasu PSE. Cena energii stała według cennika Prąd ze zmienną dystrybucją 2026; porównanie wymaga danych Kompasu w lokalnej bazie.',
     'config': _g14})
 PRESETS.extend(SUPPLIER_PRESETS)
-PRESET_VERSION = 8
+PRESET_VERSION = 9
 PRESET_OPERATORS = {'tauron': 'TAURON', 'pge': 'PGE', 'enea': 'ENEA'}
 
 

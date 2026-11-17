@@ -177,6 +177,8 @@ class ProsumerCalculation:
         zone_total = sum(z['kwh'] for z in aggregate['zones'])
         for zone in aggregate['zones']:
             zone['share_percent'] = _round(zone['kwh']/zone_total*100,1) if zone_total else 0
+            if tariff['config'].get('energy_source', 'fixed') != 'fixed':
+                zone['price_energy_net'] = zone['energy_pln'] / zone['kwh'] if zone['kwh'] else None
         aggregate['prosumer'] = dict(mode=mode, unit='kWh' if metering else 'zł', months=ledger,
             purchase_gross_pln=_round(sum(r['purchase_gross_pln'] for r in ledger)),
             credit_used_pln=_round(sum(r['credit_used_pln'] for r in ledger)), closing_balance=ledger[-1]['balance'],

@@ -63,7 +63,7 @@ def test_explicitly_added_presets_are_available(client: TestClient) -> None:
     response = client.get("/api/tariffs")
     assert response.status_code == 200
     tariffs = response.json()["tariffs"]
-    assert {item["preset_id"] for item in tariffs} == {"g11", "g12", "g12w", "g13", "g14dynamic", "pge_g11", "pge_g12", "pge_g12w", "pge_g12n", "enea_g11", "enea_g12", "enea_g12w"}
+    assert {item["preset_id"] for item in tariffs} == {"g11", "g12", "g12w", "g13", "g14dynamic", "pge_g11", "pge_g12", "pge_g12w", "pge_g12n", "enea_g11", "enea_g12", "enea_g12w", "enea_g11_dynamic", "enea_g12sezon_dynamic", "enea_g13active_dynamic", "pge_g11_dynamic", "pge_g11_dynamic_prosumer", "pge_g12e_dynamic_prosumer"}
     assert all(item["is_preset"] for item in tariffs)
 
 
@@ -138,10 +138,10 @@ def test_add_missing_operator_presets(client: TestClient) -> None:
 
     response = client.post('/api/tariffs/presets/enea')
     assert response.status_code == 200
-    assert response.json() == {'added': 1, 'skipped': 2}
+    assert response.json() == {'added': 1, 'skipped': 5}
 
     tariffs = client.get("/api/tariffs").json()["tariffs"]
-    assert len(tariffs) == 12
+    assert len(tariffs) == 18
 
 
 def test_analyze_and_history(client: TestClient) -> None:
@@ -164,7 +164,7 @@ def test_analyze_and_history(client: TestClient) -> None:
     assert result["data_quality"]["received_hours"] == 3
     assert result["data_quality"]["missing_hours"] == 21
     assert any("Koszty mogą być zaniżone" in warning for warning in result["warnings"])
-    assert len(result["tariffs"]) == 12
+    assert len(result["tariffs"]) == 18
 
     history = client.get("/api/analyses").json()["analyses"]
     assert len(history) == 1
@@ -373,13 +373,13 @@ def test_fresh_install_is_empty_and_preset_import_is_explicit(tmp_path,monkeypat
     with TestClient(app) as fresh:
         data=fresh.get('/api/tariffs').json()
         assert data['tariffs']==[]
-        assert {o['id']:o['missing'] for o in data['preset_operators']}=={'tauron':5,'pge':4,'enea':3}
-        assert fresh.post('/api/tariffs/presets/pge').json()=={'added':4,'skipped':0}
-        assert {t['preset_id'] for t in fresh.get('/api/tariffs').json()['tariffs']}=={'pge_g11','pge_g12','pge_g12w','pge_g12n'}
-        assert fresh.post('/api/tariffs/presets/pge').json()=={'added':0,'skipped':4}
+        assert {o['id']:o['missing'] for o in data['preset_operators']}=={'tauron':5,'pge':7,'enea':6}
+        assert fresh.post('/api/tariffs/presets/pge').json()=={'added':7,'skipped':0}
+        assert {t['preset_id'] for t in fresh.get('/api/tariffs').json()['tariffs']}=={'pge_g11','pge_g12','pge_g12w','pge_g12n','pge_g11_dynamic','pge_g11_dynamic_prosumer','pge_g12e_dynamic_prosumer'}
+        assert fresh.post('/api/tariffs/presets/pge').json()=={'added':0,'skipped':7}
         assert fresh.post('/api/tariffs/presets/unknown').status_code==422
         assert fresh.post('/api/tariffs/restore-presets').status_code==410
-        assert len(fresh.get('/api/tariffs').json()['tariffs'])==4
+        assert len(fresh.get('/api/tariffs').json()['tariffs'])==7
 
 
 def test_operator_import_does_not_overwrite_user_edits(client):
@@ -387,5 +387,5 @@ def test_operator_import_does_not_overwrite_user_edits(client):
     target=next(t for t in before if t['preset_id']=='enea_g12')
     changed=client.put('/api/tariffs/'+target['id'],json={'name':'Moja ENEA','description':'Własny opis','config':target['config']}).json()
     client.delete('/api/tariffs/preset_enea_g11')
-    assert client.post('/api/tariffs/presets/enea').json()=={'added':1,'skipped':2}
+    assert client.post('/api/tariffs/presets/enea').json()=={'added':1,'skipped':5}
     assert next(t for t in client.get('/api/tariffs').json()['tariffs'] if t['id']==target['id'])==changed

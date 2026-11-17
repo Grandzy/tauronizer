@@ -45,6 +45,13 @@ CREATE TABLE IF NOT EXISTS settings (
     value TEXT NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS purchase_prices (
+    source TEXT NOT NULL,
+    stamp TEXT NOT NULL,
+    value REAL NOT NULL,
+    fetched_at TEXT NOT NULL,
+    PRIMARY KEY(source, stamp)
+);
 CREATE TABLE IF NOT EXISTS export_prices (
     kind TEXT NOT NULL CHECK(kind IN ('rce','rcem')),
     stamp TEXT NOT NULL,
@@ -106,7 +113,7 @@ def init_db() -> None:
         connection.executescript(SCHEMA)
         with connection:
             _set_setting(connection, 'presets_version', str(PRESET_VERSION))
-            _set_setting(connection, 'schema_version', '3')
+            _set_setting(connection, 'schema_version', '4')
 
 
 def preset_catalog() -> list[dict[str, Any]]:
@@ -430,3 +437,24 @@ def export_price_summary() -> list[dict]:
     with _connect() as connection:
         return [dict(r) for r in connection.execute(
             'SELECT kind,COUNT(*) AS count,MIN(stamp) AS first,MAX(stamp) AS last FROM export_prices GROUP BY kind')]
+
+
+def save_purchase_prices(source, rows):
+    with _connect() as connection:
+        now = utcnow()
+        connection.executemany('INSERT INTO purchase_prices(source,stamp,value,fetched_at) VALUES(?,?,?,?) ON CONFLICT(source,stamp) DO UPDATE SET value=excluded.value,fetched_at=excluded.fetched_at',
+                               [(source, r['stamp'], r['value'], now) for r in rows])
+        _set_setting(connection, 'purchase_prices_updated', now)
+        connection.commit()
+
+
+def purchase_prices(source, start, end):
+    with _connect() as connection:
+        return {row['stamp']: row['value'] for row in connection.execute(
+            'SELECT stamp,value FROM purchase_prices WHERE source=? AND stamp>=? AND stamp<?', (source,start,end))}
+
+
+def purchase_price_summary():
+    with _connect() as connection:
+        return [dict(row) for row in connection.execute(
+            'SELECT source,COUNT(*) AS hours,MIN(stamp) AS first,MAX(stamp) AS last FROM purchase_prices GROUP BY source')]

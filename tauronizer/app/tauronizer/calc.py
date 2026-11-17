@@ -4,10 +4,11 @@ from __future__ import annotations
 
 from calendar import monthrange
 from dataclasses import dataclass
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, timedelta, timezone
 from typing import Any, Sequence
 
 from .quality import consumption_coverage
+from .purchase_prices import energy_prices
 
 from .tariffs import (
     CompiledZone,
@@ -88,12 +89,16 @@ def _cost_for_tariff(
     capacity_basis: tuple[float, int] | None = None,
 ) -> dict[str, Any]:
     totals: dict[str, float] = {zone.id: 0.0 for zone in zones}
+    config = tariff["config"]
+    energy_by_zone = {zone.id: 0.0 for zone in zones}
+    prices = energy_prices(config, [dt for dt, kwh in local_samples if kwh > 0])
     for local_dt, kwh in local_samples:
         zone = zone_for(local_dt, zones, holidays, dynamic_levels)
         totals[zone.id] += kwh
-
-    config = tariff["config"]
-    energy_pln = sum(totals[zone.id] * zone.energy_net for zone in zones)
+        key = local_dt.astimezone(timezone.utc).replace(minute=0, second=0, microsecond=0).isoformat()
+        if kwh:
+            energy_by_zone[zone.id] += kwh * (zone.energy_net if prices is None else prices[key])
+    energy_pln = sum(energy_by_zone.values())
     distribution_pln = sum(totals[zone.id] * zone.distribution_net for zone in zones)
 
     variable_fees = config.get("variable_fees") or []
@@ -148,9 +153,9 @@ def _cost_for_tariff(
                 "name": zone.name,
                 "kwh": _round(kwh, 3),
                 "share_percent": _round((kwh / total_kwh * 100) if total_kwh else 0, 1),
-                "price_energy_net": zone.energy_net,
+                "price_energy_net": (energy_by_zone[zone.id] / kwh if kwh else None) if prices is not None else zone.energy_net,
                 "price_distribution_net": zone.distribution_net,
-                "energy_pln": _round(kwh * zone.energy_net),
+                "energy_pln": _round(energy_by_zone[zone.id]),
                 "distribution_pln": _round(kwh * zone.distribution_net),
             }
         )

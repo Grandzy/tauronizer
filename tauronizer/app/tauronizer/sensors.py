@@ -9,6 +9,7 @@ from typing import Any
 
 from . import __version__
 from .forecast import dynamic_schedule
+from .purchase_prices import energy_price
 from .db import get_setting, set_setting, get_tariff, utcnow
 from .tariffs import TZ, TariffValidationError, compile_zones, holidays_between, zone_for
 
@@ -20,6 +21,7 @@ ENTITY_ID = 'sensor.tauronizer_strefa'
 PRICE_ENTITY_ID = 'sensor.tauronizer_cena_kwh'
 PRICE_DISCOVERY_TOPIC = 'homeassistant/sensor/tauronizer/cena_kwh/config'
 PRICE_STATE_TOPIC = 'tauronizer/cena_kwh/state'
+PRICE_AVAILABILITY_TOPIC = 'tauronizer/cena_kwh/availability'
 NEXT_CHANGE_ENTITY_ID = 'sensor.tauronizer_nastepna_zmiana_strefy'
 NEXT_CHANGE_DISCOVERY_TOPIC = 'homeassistant/sensor/tauronizer/nastepna_zmiana_strefy/config'
 NEXT_CHANGE_STATE_TOPIC = 'tauronizer/nastepna_zmiana_strefy/state'
@@ -55,12 +57,13 @@ def price_state(tariff: dict[str, Any], mode: str = 'gross',
                         for fee in config.get('variable_fees') or [])
     excise = float(config.get('excise_net_per_kwh', 0) or 0)
     vat = float(config.get('vat_percent', 23) or 0)
-    net = zone.energy_net + zone.distribution_net + variable_rate + excise
+    energy = energy_price(config, zone, local)
+    net = energy + zone.distribution_net + variable_rate + excise
     gross = net * (1 + vat / 100)
     return {'state': round(gross if mode == 'gross' else net, 6), 'attributes': {
         'tariff_id': tariff['id'], 'tariff_name': tariff['name'],
         'zone_id': zone.id, 'zone_name': zone.name, 'price_mode': mode,
-        'energy_net': zone.energy_net, 'distribution_net': zone.distribution_net,
+        'energy_net': energy, 'energy_source': config.get('energy_source', 'fixed'), 'distribution_net': zone.distribution_net,
         'variable_fees_net': round(variable_rate, 6), 'excise_net': excise,
         'vat_percent': vat,
     }}
@@ -71,7 +74,7 @@ def price_discovery() -> dict[str, Any]:
     result.update(name='Cena kWh', object_id='tauronizer_cena_kwh',
                   default_entity_id=PRICE_ENTITY_ID, unique_id='tauronizer_cena_kwh',
                   state_topic=PRICE_STATE_TOPIC, json_attributes_topic=PRICE_STATE_TOPIC,
-                  unit_of_measurement='PLN/kWh', state_class='measurement',
+                  unit_of_measurement='PLN/kWh', state_class='measurement', availability_topic=PRICE_AVAILABILITY_TOPIC,
                   suggested_display_precision=4, icon='mdi:cash')
     return result
 
@@ -228,20 +231,26 @@ class SensorPublisher:
                 now = datetime.now(TZ)
                 payload = zone_state(tariff, now)
                 mode = get_setting('sensor_price_mode') or 'gross'
-                price = price_state(tariff, mode, now)
+                price_error = None
+                try:
+                    price = price_state(tariff, mode, now)
+                except TariffValidationError as exc:
+                    price, price_error = None, str(exc)
                 # Reannounce discovery on every heartbeat, including after an HA/MQTT restart.
                 # Only discovery is retained: an old zone must not reappear after a restart.
                 await self.ha.publish_mqtt(DISCOVERY_TOPIC, json.dumps(discovery(), ensure_ascii=False), retain=True)
                 set_setting('sensor_discovered', '1')
                 await self.ha.publish_mqtt(PRICE_DISCOVERY_TOPIC, json.dumps(price_discovery(), ensure_ascii=False), retain=True)
                 await self.ha.publish_mqtt(STATE_TOPIC, json.dumps(payload, ensure_ascii=False), retain=False)
-                await self.ha.publish_mqtt(PRICE_STATE_TOPIC, json.dumps(price, ensure_ascii=False), retain=False)
+                if price:
+                    await self.ha.publish_mqtt(PRICE_STATE_TOPIC, json.dumps(price, ensure_ascii=False), retain=False)
+                await self.ha.publish_mqtt(PRICE_AVAILABILITY_TOPIC, 'online' if price else 'offline', retain=False)
                 await self.ha.publish_mqtt(AVAILABILITY_TOPIC, 'online', retain=False)
                 self.last_published = utcnow()
                 self.published_state = payload['state']
-                self.published_price = price['state']
+                self.published_price = price['state'] if price else None
                 self.published_price_mode = mode
-                self.status, self.error = 'published', None
+                self.status, self.error = ('waiting_data', price_error) if price_error else ('published', None)
             except TariffValidationError as exc:
                 self.status, self.error = 'waiting_data', str(exc)
             except Exception:
@@ -262,6 +271,10 @@ class SensorPublisher:
                 pass
 
     async def stop(self) -> None:
+        try:
+            await self.ha.publish_mqtt(PRICE_AVAILABILITY_TOPIC, 'offline', retain=False)
+        except Exception:
+            pass
         try:
             await self.ha.publish_mqtt(NEXT_CHANGE_AVAILABILITY_TOPIC, 'offline', retain=False)
         except Exception:

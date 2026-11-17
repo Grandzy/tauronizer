@@ -18,8 +18,8 @@
       }
     })();
   </script>
-  <link rel="stylesheet" href="static/styles.css?v=0.4.8-opt-in-presets">
-  <script defer src="static/app.js?v=0.4.8-opt-in-presets"></script>
+  <link rel="stylesheet" href="static/styles.css?v=0.4.8-dynamic-prices-2">
+  <script defer src="static/app.js?v=0.4.8-dynamic-prices-2"></script>
 </head>
 <body>
   <header class="topbar">
@@ -154,6 +154,12 @@
         <p class="muted small">Historia jest pobierana raz w tle i wznawiana po przerwaniu. Potem aktualizowane są nowe dni oraz ostatnie korekty PSE.
           Brakujące godziny wykluczają G14dynamic z porównania, bez wpływu na inne taryfy. Cennik 2026 stosowany jest do całego wybranego okresu.</p>
         <button class="button ghost" type="button" id="refresh-kompas">Uzupełnij dane</button>
+      </div>
+      <div class="notice" id="purchase-prices-panel" style="margin-bottom: 20px" hidden>
+        <h3>ENEA / PGE — ceny zakupu energii</h3>
+        <p id="purchase-prices-status" role="status">Ładowanie stanu cen…</p>
+        <p class="muted small">Ceny są zapisywane we wspólnej bazie. Historia pobierana jest raz, nowe ceny uzupełniane automatycznie; analiza pobiera brakujące dni. Dystrybucja i opłaty pochodzą z definicji taryfy. Brak cen wyklucza ofertę z porównania. Doby zmiany czasu wymagają jednoznacznych danych — obecnie API ich nie udostępniają.</p>
+        <button class="button ghost" type="button" id="refresh-purchase-prices">Uzupełnij ceny</button>
       </div>
       <div class="tariff-grid" id="tariff-grid">
         <div class="empty-state card"><p class="muted">Ładowanie taryf…</p></div>

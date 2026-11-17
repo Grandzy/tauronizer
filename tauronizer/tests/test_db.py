@@ -20,10 +20,10 @@ def test_new_installation_and_restart_have_no_tariffs(database):
     db.init_db()
     assert db.list_tariffs() == []
     assert [(o['id'],o['total'],o['missing']) for o in db.preset_catalog()] == [
-        ('tauron',5,5),('pge',4,4),('enea',3,3)]
+        ('tauron',5,5),('pge',7,7),('enea',6,6)]
 
 
-@pytest.mark.parametrize('operator,count,prefix', [('tauron',5,'Tauron '),('pge',4,'PGE '),('enea',3,'ENEA ')])
+@pytest.mark.parametrize('operator,count,prefix', [('tauron',5,'Tauron '),('pge',7,'PGE '),('enea',6,'ENEA ')])
 def test_adds_only_requested_operator(database,operator,count,prefix):
     assert db.add_presets(operator)==dict(added=count,skipped=0)
     assert len(db.list_tariffs())==count
@@ -103,7 +103,7 @@ def test_legacy_untouched_presets_also_stay_intact(database,monkeypatch):
     monkeypatch.setattr(db,'PRESET_VERSION',999)
     db.init_db()
     assert db.list_tariffs()==before
-    assert len(db.list_tariffs())==4
+    assert len(db.list_tariffs())==7
 
 
 def test_unknown_operator_does_not_change_data(database):

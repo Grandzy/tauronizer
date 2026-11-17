@@ -42,6 +42,7 @@ from .db import (
 from .ha_client import HAClient, HAError
 from .models import AnalyzeRequest, TariffCreate, TariffUpdate, SensorSettings, ProsumerSettings
 from .export_prices import ExportPriceCache
+from .purchase_prices import PurchasePriceCache
 from .prosumer import ProsumerCalculation, paired_energy
 from .sensors import SensorPublisher
 from .kompas import KompasCache
@@ -76,6 +77,8 @@ async def lifespan(app: FastAPI):
     app.state.sensors = SensorPublisher(app.state.ha)
     app.state.kompas = KompasCache(app.state.sensors.wake)
     app.state.sensors.kompas = app.state.kompas
+    app.state.purchase_prices = PurchasePriceCache(app.state.sensors.wake)
+    purchase_task = asyncio.create_task(app.state.purchase_prices.run()) if os.getenv('PURCHASE_PRICES_AUTO_SYNC', '1') != '0' else None
     app.state.export_prices = ExportPriceCache()
     price_task = asyncio.create_task(app.state.export_prices.run()) if os.getenv('EXPORT_PRICES_AUTO_SYNC', '1') != '0' else None
     publisher_task = asyncio.create_task(app.state.sensors.run())
@@ -83,6 +86,11 @@ async def lifespan(app: FastAPI):
     try:
         yield
     finally:
+        if purchase_task:
+            purchase_task.cancel()
+            with suppress(asyncio.CancelledError):
+                await purchase_task
+        await app.state.purchase_prices.close()
         if price_task:
             price_task.cancel()
             with suppress(asyncio.CancelledError):
@@ -203,9 +211,11 @@ async def tariffs() -> dict[str, Any]:
 
 
 @app.post("/api/tariffs", status_code=201)
-async def tariff_create(payload: TariffCreate) -> dict[str, Any]:
+async def tariff_create(payload: TariffCreate, request: Request) -> dict[str, Any]:
     config = _validated_config(payload)
-    return create_tariff(payload.name.strip(), payload.description.strip(), config)
+    result = create_tariff(payload.name.strip(), payload.description.strip(), config)
+    request.app.state.purchase_prices.wake.set()
+    return result
 
 
 @app.post('/api/tariffs/presets/{operator}')
@@ -213,6 +223,7 @@ async def tariff_add_presets(operator: Literal['tauron', 'pge', 'enea'], request
     result = add_presets(operator)
     _LOGGER.info('Preset import %s: added=%d skipped=%d', operator, result['added'], result['skipped'])
     request.app.state.sensors.wake.set()
+    request.app.state.purchase_prices.wake.set()
     return result
 
 
@@ -231,6 +242,7 @@ async def tariff_update(tariff_id: str, payload: TariffUpdate, request: Request)
     if updated is None:
         raise HTTPException(status_code=404, detail="Nie znaleziono taryfy.")
     request.app.state.sensors.wake.set()
+    request.app.state.purchase_prices.wake.set()
     return updated
 
 
@@ -314,6 +326,17 @@ async def prosumer_settings_put(payload: ProsumerSettings):
 async def prosumer_prices_refresh(request: Request):
     request.app.state.export_prices.wake.set()
     return request.app.state.export_prices.snapshot()
+
+
+@app.get('/api/purchase-prices')
+async def purchase_prices_status(request: Request):
+    return request.app.state.purchase_prices.snapshot()
+
+
+@app.post('/api/purchase-prices/refresh')
+async def purchase_prices_refresh(request: Request):
+    request.app.state.purchase_prices.wake.set()
+    return request.app.state.purchase_prices.snapshot()
 
 
 @app.post("/api/analyze")
@@ -407,6 +430,12 @@ async def run_analysis(payload: AnalyzeRequest, request: Request) -> dict[str, A
 
     current_tariff_id = get_setting("sensor_tariff_id")
     current_tariff = next((t for t in all_tariffs if t["id"] == current_tariff_id), None)
+    try:
+        await asyncio.wait_for(request.app.state.purchase_prices.ensure(
+            selected + ([current_tariff] if current_tariff else []), payload.start, payload.end), timeout=20)
+    except asyncio.TimeoutError:
+        request.app.state.purchase_prices.wake.set()
+        warnings.append('Historia cen zakupu jest nadal uzupełniana w tle. Taryfy z brakującymi cenami nie otrzymają wyceny; ponów analizę po pobraniu danych.')
     settings = payload.prosumer
     if settings is None:
         saved = get_setting('prosumer_settings')

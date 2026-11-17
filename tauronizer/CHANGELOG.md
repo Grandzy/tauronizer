@@ -2,6 +2,10 @@
 
 ## Niewydane
 
+- Ceny zakupu energii ENEA (detaliczne API) i PGE (DataHub TGE + warunki oferty), osobna trwała baza, import historii i automatyczna aktualizacja dziś/jutro. Wspólny przelicznik w analizie, rozliczeniu prosumenta i sensorze ceny, bez podwójnej akcyzy/VAT.
+- Nowe presety opt-in: ENEA G11/G12sezON/G13active + Ceny Dynamiczne; PGE G11 + Dynamiczna energia (odbiorca/prosument) oraz G12e dla prosumenta poza specjalnym obszarem. Edytowalne źródło ceny energii i dodatek PGE; synchronizacja nie zmienia definicji taryf.
+- Stan importu cen w Taryfach. Braki danych i niejednoznaczne doby zmiany czasu wykluczają wyłącznie odpowiednią ofertę; sensor ceny staje się niedostępny niezależnie od sensora strefy. Specjalny harmonogram G12e pozostaje nieobsługiwany automatycznie.
+
 - Nowe instalacje startują bez presetów. W zakładce Taryfy osobne przyciski dodają presety TAURON, PGE lub ENEA, tylko brakujące i bez duplikatów.
 - Aktualizacje nie dopisują, nie usuwają i nie nadpisują zapisanych taryf. Zachowane są własne definicje, kopie oraz zmiany cen, nazw i opisów presetów, także w starych bazach bez hashy.
 - Usunięto zbiorcze przywracanie presetów; dawny endpoint zwraca komunikat zamiast nadpisywać konfigurację.

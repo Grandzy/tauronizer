@@ -282,11 +282,15 @@ async function loadKompas() {
 }
 
 function bindSensorEvents() {
+  $('#refresh-purchase-prices').addEventListener('click', async () => {
+    try { await api('api/purchase-prices/refresh', {method: 'POST'}); toast('Zlecono uzupełnienie cen energii.', 'success'); await loadPurchasePrices(); }
+    catch (error) { toast(error.message, 'error'); }
+  });
   $('#refresh-kompas').addEventListener('click', async () => {
     try { await api('api/kompas/refresh', {method: 'POST'}); toast('Zlecono uzupełnienie danych Kompasu PSE.', 'success'); await loadKompas(); }
     catch (error) { toast(error.message, 'error'); }
   });
-  window.setInterval(() => { if (!document.hidden && !$('#tab-tariffs').hidden) loadKompas(); }, 10000);
+  window.setInterval(() => { if (!document.hidden && !$('#tab-tariffs').hidden) { loadKompas(); loadPurchasePrices(); } }, 10000);
   $('#sensor-tariff').addEventListener('change', () => { state.sensorDirty = true; });
   $('#sensor-price-mode').addEventListener('change', () => { state.sensorDirty = true; });
   $('#sensor-settings').addEventListener('submit', async (event) => {
@@ -447,6 +451,20 @@ function updateEntityHint() {
   }
 }
 
+async function loadPurchasePrices() {
+  const panel = $('#purchase-prices-panel');
+  panel.hidden = !state.tariffs.some(t => t.config.energy_source && t.config.energy_source !== 'fixed');
+  if (panel.hidden) return;
+  try {
+    const data = await api('api/purchase-prices');
+    const labels = {waiting: 'Oczekiwanie', syncing: 'Pobieranie', ready: 'Dane uzupełnione', error: 'Dane niepełne', idle: 'Brak ofert z API'};
+    $('#purchase-prices-status').textContent = `${labels[data.status] || data.status}. ` +
+      (data.series || []).map(s => `${({enea_dynamic:'ENEA',pge_fix1:'PGE Fixing I',pge_fix2:'PGE Fixing II'})[s.source] || s.source}: ${s.hours} godzin (${formatDate(s.first.slice(0,10))}–${formatDate(s.last.slice(0,10))})`).join(' · ') +
+      (data.last_update ? ` · ostatni zapis: ${new Date(data.last_update).toLocaleString('pl-PL')}` : '') +
+      (data.error ? ` · ${data.error}` : '');
+  } catch (error) { $('#purchase-prices-status').textContent = error.message; }
+}
+
 async function loadTariffs() {
   try {
     const data = await api('api/tariffs');
@@ -472,6 +490,7 @@ async function loadTariffs() {
     renderTariffChips();
     renderTariffGrid();
     loadKompas();
+    loadPurchasePrices();
     renderSensorTariffs();
     updateToggleLabel();
   } catch (error) {
@@ -1162,6 +1181,7 @@ function renderAnalysis(result) {
 
 function tariffPriceRange(tariff) {
   const config = tariff.config || {};
+  if (config.energy_source && config.energy_source !== 'fixed') return null;
   const extras = (config.variable_fees || []).reduce((sum, fee) => sum + (Number(fee.net_per_kwh) || 0), 0)
     + (Number(config.excise_net_per_kwh) || 0);
   const vatMultiplier = 1 + (Number(config.vat_percent ?? 23) || 0) / 100;
@@ -1278,12 +1298,15 @@ function renderTariffGrid() {
   grid.innerHTML = state.tariffs.map((tariff) => {
     const config = tariff.config || {};
     const range = tariffPriceRange(tariff);
+    const dynamicEnergy = config.energy_source && config.energy_source !== 'fixed';
     const fixed = (config.fixed_fees || []).reduce((sum, fee) => sum + (Number(fee.net_monthly) || 0), 0);
     const zones = (config.zones || []).slice().sort((a, b) => Number(isDefaultZone(a)) - Number(isDefaultZone(b)));
-    const pills = zones.slice(0, 5).map((zone) => `
-      <span class="zone-pill" title="${escapeHtml(zoneSchedule(zone))}">
+    const displayZones = dynamicEnergy ? Array.from(new Map(zones.map(zone => [
+      `${zone.name}|${zone.distribution_net}`, zone])).values()) : zones.slice(0, 5);
+    const pills = displayZones.map((zone) => `
+      <span class="zone-pill" title="${escapeHtml(dynamicEnergy ? zones.filter(z => z.name === zone.name && z.distribution_net === zone.distribution_net).map(zoneSchedule).join('; ') : zoneSchedule(zone))}">
         ${escapeHtml(isDefaultZone(zone) && zone.name === 'Pozaszczyt' ? 'Pozostałe godziny — strefa domyślna' : zone.name)}
-        <b>${formatNumber((Number(zone.energy_net) || 0) + (Number(zone.distribution_net) || 0), 2)}</b>
+        <b>${formatNumber((dynamicEnergy ? 0 : (Number(zone.energy_net) || 0)) + (Number(zone.distribution_net) || 0), 2)}</b>
       </span>`).join('');
 
     return `
@@ -1293,12 +1316,12 @@ function renderTariffGrid() {
           ${tariff.is_preset ? '<span class="badge">preset</span>' : ''}
         </div>
         <p class="muted">${escapeHtml(tariff.description || 'Taryfa własna.')}</p>
-        <p class="muted small">Strefy: energia + sieć, netto zł/kWh, bez akcyzy i opłat dodatkowych.</p>
+        <p class="muted small">${dynamicEnergy ? 'Strefy: sama dystrybucja netto zł/kWh. Cena energii pochodzi z API.' : 'Strefy: energia + sieć, netto zł/kWh, bez akcyzy i opłat dodatkowych.'}</p>
         <div class="zone-pills">${pills || '<span class="muted small">Brak stref</span>'}</div>
         ${tariffZoneHelp(config)}
         ${tariffReferenceHelp(config)}
         <div class="tariff-meta">
-          <span>${range ? `zmienne brutto: <b>${formatNumber(range.min, 2)}${range.max - range.min > 0.001 ? `–${formatNumber(range.max, 2)}` : ''} zł/kWh</b>` : 'brak cen'}</span>
+          <span>${range ? `zmienne brutto: <b>${formatNumber(range.min, 2)}${range.max - range.min > 0.001 ? `–${formatNumber(range.max, 2)}` : ''} zł/kWh</b>` : dynamicEnergy ? 'energia: <b>cena z API dla każdej godziny</b>' : 'brak cen'}</span>
           <span>stałe: <b>${formatPLN(fixed)}</b>/mies. netto${config.capacity_fee ? " + mocowa według progu zużycia" : ""}</span>
         </div>
         <div class="tariff-actions">
@@ -1552,6 +1575,18 @@ function openTariffEditor(tariff) {
               <p class="field-hint">Usuń opłatę mocową z pozostałych opłat, jeśli była tam wpisana — aby nie naliczać jej dwa razy.</p>
             </div>
 
+            <label class="field">
+              <span class="field-label">Cena energii</span>
+              <select class="input" id="energy-source">
+                ${[['fixed','Stałe ceny wpisane w strefach'],['enea_dynamic','ENEA Ceny Dynamiczne — API sprzedawcy'],['pge_dynamic','PGE Dynamiczna energia — TGE z DataHub PGE']].map(([id,label]) => `<option value="${id}" ${(config.energy_source || 'fixed') === id ? 'selected' : ''}>${label}</option>`).join('')}
+              </select>
+            </label>
+            <label class="field" id="energy-markup-field">
+              <span class="field-label">Dodatek PGE netto (zł/kWh, bez akcyzy)</span>
+              <input class="input" id="energy-markup" type="number" min="0" max="10" step="0.0001" value="${Number(config.energy_markup_net ?? .0855)}">
+              <span class="field-hint">Ed. 1.2026: 0,0855 bez prosumenta; 0,1150 dla prosumenta. Dostosuj też opłatę handlową do umowy.</span>
+            </label>
+            <p class="field-hint" id="energy-source-hint"></p>
             <div class="form-row">
               <label class="field">
                 <span class="field-label">Akcyza netto (zł/kWh)</span>
@@ -1575,11 +1610,22 @@ function openTariffEditor(tariff) {
       </form>
     </div>`);
   $$('.zone-editor', $('#zone-list')).forEach(syncDefaultZoneEditor);
+  $('#energy-source').addEventListener('change', syncEnergySource);
+  syncEnergySource();
   if (config.zone_source === 'pse_kompas') {
     $('[data-add-zone]', $('#tariff-form')).hidden = true;
     $$('.zone-default', $('#zone-list')).forEach(input => { input.closest('label').hidden = true; });
     $('#zone-list').previousElementSibling.querySelector('p').textContent = 'Strefy S1–S4 wybiera Kompas PSE. Możesz edytować nazwy i stawki; godzin nie ustawia się ręcznie.';
   }
+}
+
+function syncEnergySource() {
+  const source = $('#energy-source').value;
+  $('#energy-markup-field').hidden = source !== 'pge_dynamic';
+  $$('.zone-energy', $('#zone-list')).forEach(input => { input.disabled = source !== 'fixed'; });
+  $('#energy-source-hint').textContent = source === 'fixed' ? '' :
+    'Ceny wpisane w strefach nie są używane. Energia pochodzi z API; dystrybucja i pozostałe opłaty z tej definicji. Brak ceny oznacza brak wyceny, bez zastępowania zerem. ' +
+    (source === 'enea_dynamic' ? 'API ENEA zawiera marżę, akcyzę i VAT; są rozdzielane przed obliczeniem faktury. Opłata handlowa pozostaje osobno.' : 'PGE: Fixing I do 2026, Fixing II od 2027; ograniczenie notowania do 0–4000 zł/MWh, następnie dodatek, akcyza i VAT.');
 }
 
 function showFormError(message) {
@@ -1693,6 +1739,8 @@ async function saveTariffForm(form) {
       config: {
         zones,
         zone_source: state.editingTariff?.config.zone_source || 'schedule',
+        energy_source: $('#energy-source').value,
+        energy_markup_net: Number($('#energy-markup').value),
         reference: state.editingTariff?.config.reference || null,
         fixed_fees: readFees(form, 'fixed-fees', 'net_monthly'),
         variable_fees: readFees(form, 'variable-fees', 'net_per_kwh'),
@@ -1757,6 +1805,7 @@ function bindModalEvents() {
       const fallback = $('#zone-list .zone-default:checked')?.closest('.zone-editor');
       if (fallback) fallback.insertAdjacentHTML('beforebegin', zoneEditorHtml({}));
       else $('#zone-list').insertAdjacentHTML('beforeend', zoneEditorHtml({}));
+      syncEnergySource();
       const rows = $$('.zone-editor', $('#zone-list'));
       rows.findLast((row) => !$('.zone-default', row).checked)?.querySelector('.zone-name')?.focus();
       return;

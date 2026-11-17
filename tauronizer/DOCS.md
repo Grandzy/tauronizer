@@ -368,3 +368,12 @@ do swojego PPE. PGE G12/G12w mają sezonową strefę popołudniową, G12n nocną
 oraz całe niedziele i święta. ENEA G12w ma szczyt 6–21 w dni robocze.
 Presety zakładają automatyczną zmianę czasu licznika; dla stałego czasu zimowego
 dostosuj letnie reguły. Porównuj taryfy odpowiadające swojej umowie i obszarowi.
+
+
+## Ceny dynamiczne ENEA i PGE (DEV)
+
+W Taryfach dodaj presety operatora. Edytor umożliwia wybór cen stałych albo API
+ENEA/PGE niezależnie od dystrybucji. Import archiwum oraz aktualizacje nie zmieniają
+zapisanych taryf. Przy braku ceny oferta nie otrzymuje wyceny. Doby zmiany czasu
+pozostają niekompletne; specjalny obszar godzin G12e nie jest obsługiwany automatycznie.
+Szczegóły i źródła: https://github.com/direk/tauronizer/blob/dev/docs/ceny-dynamiczne-enea-pge.md

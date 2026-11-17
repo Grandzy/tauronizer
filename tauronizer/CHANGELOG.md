@@ -2,6 +2,11 @@
 
 ## Niewydane
 
+- Obsługa prosumentów: net-metering 0,8/0,7, net-billing RCEm i RCE, osobna encja eksportu, zapisywane ustawienia i miesięczne salda początkowe.
+- Rozliczenie każdej taryfy miesiąc po miesiącu: wykorzystanie i wygaśnięcie opustów/depozytu, potencjalny zwrot, saldo końcowe i kwota do zapłaty. Ranking i wykres miesięczny uwzględniają rozliczenie prosumenta.
+- Lokalna baza oficjalnych cen eksportu PSE: historia RCE i RCEm, aktualizacje i korekty, wznawianie pobierania. Ceny eksportu są niezależne od Kompasu G14dynamic.
+- Kompletność obu liczników i wspólnych godzin, bilansowanie godzinowe, ostrzeżenia o zerowym saldzie początkowym i przybliżeniu RCE z godzinowych danych HA.
+
 - Wersja testowa ma osobne oznaczenie DEV w nazwie repozytorium, dodatku i panelu Home Assistant.
 - Najechanie na wycinek wykresu pączkowego faktury podświetla odpowiadający mu wiersz legendy; działa także przy wyborze klawiaturą i osobno dla każdej taryfy.
 - Szersza tabela zużycia według stref i węższa kolumna składników rachunku; długie nazwy stref zawijają się zamiast wymuszać przewijanie poziome.

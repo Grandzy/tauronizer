@@ -39,7 +39,9 @@ from .db import (
     utcnow,
 )
 from .ha_client import HAClient, HAError
-from .models import AnalyzeRequest, TariffCreate, TariffUpdate, SensorSettings
+from .models import AnalyzeRequest, TariffCreate, TariffUpdate, SensorSettings, ProsumerSettings
+from .export_prices import ExportPriceCache
+from .prosumer import ProsumerCalculation, paired_energy
 from .sensors import SensorPublisher
 from .kompas import KompasCache
 from .tariffs import KOMPAS_ZONE_DESCRIPTIONS, PRESET_NOTE, TZ, TariffValidationError, compile_zones
@@ -73,11 +75,18 @@ async def lifespan(app: FastAPI):
     app.state.sensors = SensorPublisher(app.state.ha)
     app.state.kompas = KompasCache(app.state.sensors.wake)
     app.state.sensors.kompas = app.state.kompas
+    app.state.export_prices = ExportPriceCache()
+    price_task = asyncio.create_task(app.state.export_prices.run()) if os.getenv('EXPORT_PRICES_AUTO_SYNC', '1') != '0' else None
     publisher_task = asyncio.create_task(app.state.sensors.run())
     kompas_task = asyncio.create_task(app.state.kompas.run()) if os.getenv('KOMPAS_AUTO_SYNC', '1') != '0' else None
     try:
         yield
     finally:
+        if price_task:
+            price_task.cancel()
+            with suppress(asyncio.CancelledError):
+                await price_task
+        await app.state.export_prices.close()
         if kompas_task:
             kompas_task.cancel()
             with suppress(asyncio.CancelledError):
@@ -278,6 +287,27 @@ async def kompas_schedule():
     return result
 
 
+@app.get('/api/prosumer')
+async def prosumer_settings_get(request: Request):
+    saved = get_setting('prosumer_settings')
+    settings = ProsumerSettings.model_validate_json(saved) if saved else ProsumerSettings()
+    return {'settings': settings.model_dump(), 'prices': request.app.state.export_prices.snapshot()}
+
+
+@app.put('/api/prosumer')
+async def prosumer_settings_put(payload: ProsumerSettings):
+    if payload.mode != 'off' and not payload.export_entity_id:
+        raise HTTPException(400, 'Wybierz encję eksportu energii do sieci.')
+    set_setting('prosumer_settings', payload.model_dump_json())
+    return payload.model_dump()
+
+
+@app.post('/api/prosumer/prices/refresh')
+async def prosumer_prices_refresh(request: Request):
+    request.app.state.export_prices.wake.set()
+    return request.app.state.export_prices.snapshot()
+
+
 @app.post("/api/analyze")
 async def run_analysis(payload: AnalyzeRequest, request: Request) -> dict[str, Any]:
     as_of = datetime.now(TZ).date()
@@ -369,7 +399,60 @@ async def run_analysis(payload: AnalyzeRequest, request: Request) -> dict[str, A
 
     current_tariff_id = get_setting("sensor_tariff_id")
     current_tariff = next((t for t in all_tariffs if t["id"] == current_tariff_id), None)
-    result = analyze(selected, clean_samples, payload.start, payload.end, current_tariff=current_tariff)
+    settings = payload.prosumer
+    if settings is None:
+        saved = get_setting('prosumer_settings')
+        settings = ProsumerSettings.model_validate_json(saved) if saved else ProsumerSettings()
+    prosumer_calculation = None
+    prosumer_info = None
+    if settings.mode != 'off':
+        if not settings.export_entity_id or settings.export_entity_id == payload.entity_id:
+            raise HTTPException(400, 'Wybierz dwie różne encje: pobór z sieci i eksport do sieci.')
+        await ha.get_entity(settings.export_entity_id)
+        exports, export_unit = await ha.get_statistics(settings.export_entity_id, start_utc, end_utc)
+        exports = [s for s in exports if start_utc <= s.timestamp < end_utc]
+        balanced_imports, balanced_exports = paired_energy(in_range, exports)
+        if not balanced_imports:
+            raise HTTPException(400, 'Brak wspólnych, prawidłowych godzin statystyk poboru i eksportu. Brak eksportu nie oznacza zera.')
+        export_quality = consumption_coverage(exports, payload.start, payload.end)
+        paired_quality = consumption_coverage(balanced_imports, payload.start, payload.end)
+        if settings.mode in ('rcem', 'rce'):
+            try:
+                await request.app.state.export_prices.ensure(settings.mode, payload.start, payload.end)
+            except Exception as exc:
+                _LOGGER.warning('Export prices for analysis: %s', exc)
+                warnings.append('Nie udało się uzupełnić cen PSE. Użyto lokalnej bazy; taryfy wymagające brakujących cen nie będą policzone.')
+        prosumer_calculation = ProsumerCalculation(settings, balanced_imports, balanced_exports, payload.start, payload.end)
+        raw_import_kwh = round(sum(s.kwh for s in clean_samples),3)
+        clean_samples = balanced_imports
+        warnings.append('Symulacja prosumenta: miesięczne rozliczenie, godzinowe bilansowanie poboru i eksportu. Stawki taryfy pozostają stałe w całym okresie; to szacunek, nie odtworzenie faktur historycznych.')
+        if payload.start.day != 1 or payload.end != (payload.end.replace(day=28) + timedelta(days=4)).replace(day=1)-timedelta(days=1):
+            warnings.append('Zakres obejmuje niepełny miesiąc. Saldo i depozyt tego miesiąca dotyczą tylko wybranego fragmentu.')
+        if not settings.opening_balances:
+            warnings.append('Nie podano salda początkowego — przyjęto 0. Wynik pomija środki lub opusty zgromadzone przed analizą.')
+        if paired_quality['missing_hours']:
+            warnings.append(f"Brakuje wspólnych danych dla {paired_quality['missing_hours']} godzin. Pominięto je w obu kierunkach; saldo i koszty są niepełnym szacunkiem.")
+        if settings.mode == 'net_metering' and any(not b.zone_id for b in settings.opening_balances):
+            warnings.append('Saldo początkowe bez przypisania do strefy potraktowano jako wspólną pulę. Przy wielu strefach wynik jest przybliżony; wybierz strefy salda z faktury dla dokładniejszej symulacji.')
+        if settings.mode == 'rce':
+            warnings.append('RCE: eksport godzinowy rozdzielono równo na cztery kwadranse. Ujemne ceny zastąpiono zerem. Kwota depozytu jest przybliżona.')
+        prosumer_info = dict(settings=settings.model_dump(), export_unit=export_unit,
+            export_quality=export_quality, paired_quality=paired_quality,
+            export_kwh=round(sum(s.kwh for s in balanced_exports),3),
+            raw_import_kwh=raw_import_kwh,
+            incomplete=bool(paired_quality['missing_hours']), approximate_rce=settings.mode=='rce')
+    result = analyze(selected, clean_samples, payload.start, payload.end, current_tariff=current_tariff,
+                     prosumer_calculation=prosumer_calculation)
+    if prosumer_info:
+        result['prosumer'] = prosumer_info
+        result['methodology'] += (' Prosument: ranking i wykres kosztów pokazują kwotę do zapłaty po rozliczeniu. '
+            'Saldo końcowe nie jest odejmowane od rachunku i nie jest traktowane jako gotówka. '
+            'Depozyt pokrywa tylko energię czynną z akcyzą i VAT, bez dystrybucji i opłat stałych. '
+            'Depozyt z eksportu jest dostępny w kolejnym miesiącu; od lutego 2025 mnożnik 1,23. '
+            'Najstarsze środki zużywane są najpierw, wygasają po 12 miesiącach od przypisania. '
+            'W opustach najpierw rozliczane są te same strefy, potem strefy o najwyższej dystrybucji. '
+            'Początkowe saldo kWh jest już po współczynniku opustu. Zwroty depozytu są pokazane osobno jako potencjalne, nie zmniejszają rachunku. '
+            'Model miesięczny może różnić się od dawnych cykli rozliczenia 2/6/12 miesięcy; zmiana taryfy w trakcie okresu nie jest symulowana.')
     quality = consumption_coverage(in_range, payload.start, payload.end)
     result['data_quality'] = quality
     if quality['missing_hours']:

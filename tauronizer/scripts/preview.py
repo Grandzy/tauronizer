@@ -19,6 +19,7 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "app"))
 os.environ.setdefault("DATA_DIR", str(ROOT / "data-preview"))
 os.environ.setdefault("KOMPAS_AUTO_SYNC", "0")
+os.environ.setdefault("EXPORT_PRICES_AUTO_SYNC", "0")
 
 import uvicorn  # noqa: E402
 
@@ -27,6 +28,8 @@ from tauronizer.main import app  # noqa: E402
 from tauronizer.tariffs import TZ  # noqa: E402
 
 ENTITIES = [
+    {"entity_id": "sensor.eksport_siec", "name": "Eksport do sieci", "unit": "kWh",
+     "state_class": "total_increasing", "device_class": "energy", "state": "4120.2", "available": True},
     {
         "entity_id": "sensor.energia_dom",
         "name": "Energia domu",
@@ -80,7 +83,11 @@ class DemoHA:
         raise ValueError("unknown entity")
 
     async def get_statistics(self, entity_id, start, end):
-        return demo_samples(start, end), "kWh"
+        samples = demo_samples(start, end)
+        if entity_id == 'sensor.eksport_siec':
+            samples = [ConsumptionSample(s.timestamp, round(max(0, 2.5 * math.sin((s.timestamp.astimezone(TZ).hour-7)*math.pi/12)),4)
+                       if 7 <= s.timestamp.astimezone(TZ).hour <= 19 else 0) for s in samples]
+        return samples, "kWh"
 
     async def publish_mqtt(self, topic, payload, *, retain):
         # Demo only: no connection to a real broker or Home Assistant.

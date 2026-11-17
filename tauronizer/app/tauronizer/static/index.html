@@ -18,8 +18,8 @@
       }
     })();
   </script>
-  <link rel="stylesheet" href="static/styles.css?v=0.4.6-invoice-legend">
-  <script defer src="static/app.js?v=0.4.6-invoice-legend"></script>
+  <link rel="stylesheet" href="static/styles.css?v=0.4.7-prosumer">
+  <script defer src="static/app.js?v=0.4.7-prosumer"></script>
 </head>
 <body>
   <header class="topbar">
@@ -102,6 +102,39 @@
             </div>
           </div>
         </div>
+
+        <details class="prosumer-settings details">
+          <summary>Prosument <span class="muted small">pobór i eksport do sieci</span></summary>
+          <div class="details-body">
+            <div class="grid-2">
+              <label class="field"><span class="field-label">Sposób rozliczenia</span>
+                <select id="prosumer-mode" class="input">
+                  <option value="off">Bez rozliczenia prosumenta</option>
+                  <option value="net_metering">Net-metering — opusty</option>
+                  <option value="rcem">Net-billing — RCEm (cena miesięczna)</option>
+                  <option value="rce">Net-billing — RCE (ceny okresowe)</option>
+                </select>
+              </label>
+              <label class="field" id="prosumer-export-field" hidden><span class="field-label">Encja eksportu do sieci</span>
+                <select id="prosumer-export" class="input"><option value="">Wybierz encję…</option></select>
+              </label>
+            </div>
+            <div id="prosumer-options" hidden>
+              <p class="muted small">Główna encja analizy musi mierzyć <strong>pobór z sieci</strong>, a druga — eksport do sieci. Wybierz liczniki energii (kWh), nie moc chwilową ani całkowitą produkcję PV.</p>
+              <label class="field" id="prosumer-ratio-field"><span class="field-label">Współczynnik opustu</span>
+                <select id="prosumer-ratio" class="input"><option value="0.8">0,8 — instalacja do 10 kW</option><option value="0.7">0,7 — instalacja powyżej 10 kW</option></select>
+              </label>
+              <p class="muted small" id="prosumer-mode-help"></p>
+              <h4>Saldo początkowe <span id="prosumer-balance-unit" class="muted small"></span></h4>
+              <p class="muted small">Opcjonalnie wpisz pozostałe saldo z faktury, w osobnych wierszach dla miesięcy. Bez niego przyjmiemy 0. Dla opustów wpisz kWh już po współczynniku 0,8/0,7 i miesiąc eksportu; dla depozytu — zł i miesiąc przypisania do konta. W opustach miesiąc eksportu musi poprzedzać miesiąc analizy; depozyt może być przypisany również w miesiącu rozpoczęcia.</p>
+              <div id="prosumer-balances"></div>
+              <button type="button" class="button ghost" id="prosumer-add-balance">+ Dodaj miesiąc salda</button>
+              <p id="prosumer-price-status" class="muted small" role="status"></p>
+              <button type="button" class="link-button" id="prosumer-refresh-prices">Odśwież ceny PSE</button>
+            </div>
+            <div class="form-actions"><button type="button" class="button ghost" id="prosumer-save">Zapisz ustawienia prosumenta</button><span class="muted small" id="prosumer-save-status" role="status"></span></div>
+          </div>
+        </details>
 
         <div class="field">
           <div class="field-head">

@@ -18,6 +18,12 @@ profilu zużycia — w wybranym okresie i w przeliczeniu na rok.
 > Wszystkie ceny konfiguracyjne są netto, energia bez akcyzy; VAT doliczamy
 > do końcowej sumy netto. Sprawdź rodzaj umowy, liczbę faz i cykl rozliczeń.
 
+## Prosument (wersja DEV)
+
+W analizie możesz włączyć net-metering (0,8/0,7) albo net-billing (RCEm/RCE),
+wybrać licznik eksportu i dodać saldo początkowe. Porównanie uwzględnia miesięczne
+rozliczenie oraz pozostały depozyt lub opust. [Konfiguracja i ograniczenia](docs/prosumenci.md).
+
 ## Przykładowa analiza
 
 ![Przykładowa analiza zużycia i porównanie taryf w Tauronizerze](docs/images/przykladowa-analiza.jpg)

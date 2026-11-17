@@ -432,7 +432,7 @@ function updateEntityHint() {
   if (entity) {
     hint.textContent = `${entity.entity_id} · jednostka: ${entity.unit || 'kWh'} · stan: ${entity.state ?? '—'}`;
   } else if (state.entities.length) {
-    hint.textContent = `${state.entities.length} ${plural(state.entities.length, 'sensor', 'sensory', 'sensorów')} energii. Wybierz ten, który mierzy całkowite zużycie domu.`;
+    hint.textContent = `${state.entities.length} ${plural(state.entities.length, 'sensor', 'sensory', 'sensorów')} energii. Dla prosumenta wybierz licznik poboru z sieci.`;
   }
 }
 
@@ -537,6 +537,107 @@ function setAnalyzing(busy) {
     : `<svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path d="M13 2 4 14h6l-1 8 9-12h-6l1-8z"></path></svg> Analizuj zużycie`;
 }
 
+function syncProsumerFields() {
+  const mode = $('#prosumer-mode').value;
+  $('#prosumer-options').hidden = mode === 'off';
+  $('#prosumer-export-field').hidden = mode === 'off';
+  $('#prosumer-ratio-field').hidden = mode !== 'net_metering';
+  $('#prosumer-balance-unit').textContent = mode === 'net_metering' ? 'kWh do odebrania' : 'zł depozytu';
+  $('#prosumer-mode-help').textContent = mode === 'net_metering'
+    ? 'Najpierw rozliczamy te same strefy, potem strefy z najdroższą dystrybucją. Opłaty stałe pozostają. Niewykorzystane opusty wygasają.'
+    : 'Depozyt pokrywa energię z akcyzą i VAT; dystrybucję i opłaty stałe płacisz osobno. Nowy depozyt jest dostępny w kolejnym miesiącu. Wybierz system zgodny z umową. RCE z danych godzinowych jest przybliżeniem.';
+  $$('.prosumer-balance-zone').forEach(el => { el.hidden = mode !== 'net_metering'; });
+  $$('.prosumer-export-value').forEach(el => { el.hidden = mode === 'net_metering'; });
+  $$('.prosumer-balance-amount-label').forEach(el => { el.textContent = mode === 'net_metering' ? 'Pozostałe kWh' : 'Pozostałe zł'; });
+  $('#prosumer-save-status').textContent = '';
+}
+
+function addProsumerBalance(balance = {}) {
+  const row = document.createElement('div');
+  row.className = 'prosumer-balance-row';
+  row.innerHTML = `<label class="field"><span class="field-label">Miesiąc</span><input class="input" type="month" data-balance="month" value="${escapeHtml(balance.month || '')}"></label>
+    <label class="field"><span class="field-label prosumer-balance-amount-label">Pozostałe saldo</span><input class="input" type="number" min="0.001" step="any" data-balance="amount" value="${escapeHtml(balance.amount ?? '')}"></label>
+    <label class="field prosumer-balance-zone"><span class="field-label">Strefa salda</span><select class="input" data-balance="zone_id"><option value="">Wspólna pula (szacunek)</option>${Array.from(new Map(state.tariffs.flatMap(t => t.config.zones.map(z => [z.id,z.name])))).map(([id,name]) => `<option value="${escapeHtml(id)}" ${balance.zone_id === id ? 'selected' : ''}>${escapeHtml(name)} (${escapeHtml(id)})</option>`).join('')}</select></label>
+    <label class="field prosumer-export-value"><span class="field-label">Wartość eksportu przed ×1,23 (zł, opcjonalnie)</span><input class="input" type="number" min="0" step="any" data-balance="export_value_pln" value="${escapeHtml(balance.export_value_pln ?? '')}"></label>
+    <button type="button" class="button ghost" data-remove-balance aria-label="Usuń miesiąc salda">Usuń</button>`;
+  $('#prosumer-balances').appendChild(row);
+  syncProsumerFields();
+}
+
+function readProsumerSettings() {
+  const mode = $('#prosumer-mode').value;
+  const settings = {mode, export_entity_id: $('#prosumer-export').value || null,
+    ratio: Number($('#prosumer-ratio').value), opening_balances: []};
+  if (mode === 'off') return settings;
+  if (!settings.export_entity_id) throw new Error('Wybierz encję eksportu do sieci.');
+  if (settings.export_entity_id === $('#entity-select').value) throw new Error('Pobór i eksport muszą pochodzić z dwóch różnych encji.');
+  settings.opening_balances = $$('.prosumer-balance-row').map(row => {
+    const month = $('[data-balance="month"]', row).value;
+    const amount = Number($('[data-balance="amount"]', row).value);
+    const value = $('[data-balance="export_value_pln"]', row).value;
+    if (!month || !Number.isFinite(amount) || amount <= 0) throw new Error('Uzupełnij miesiąc i dodatnią wartość każdego salda.');
+    return {month, amount, zone_id: mode === 'net_metering' ? $('[data-balance="zone_id"]', row).value || null : null, export_value_pln: mode === 'net_metering' || value === '' ? null : Number(value)};
+  });
+  return settings;
+}
+
+function applyProsumerSettings(settings = {}) {
+  $('#prosumer-mode').value = settings.mode || 'off';
+  const select = $('#prosumer-export');
+  select.innerHTML = '<option value="">Wybierz encję eksportu…</option>' + state.entities.map(e => `<option value="${escapeHtml(e.entity_id)}">${escapeHtml(e.name)} — ${escapeHtml(e.entity_id)}</option>`).join('');
+  if (settings.export_entity_id && !state.entities.some(e => e.entity_id === settings.export_entity_id)) {
+    const option = new Option(settings.export_entity_id, settings.export_entity_id);
+    select.add(option);
+  }
+  select.value = settings.export_entity_id || '';
+  $('#prosumer-ratio').value = String(settings.ratio || 0.8);
+  $('#prosumer-balances').innerHTML = '';
+  (settings.opening_balances || []).forEach(addProsumerBalance);
+  syncProsumerFields();
+}
+
+async function loadProsumer() {
+  try {
+    const data = await api('api/prosumer');
+    applyProsumerSettings(data.settings);
+    const prices = data.prices;
+    $('#prosumer-price-status').textContent = `Ceny PSE: ${prices.last_update ? formatInstant(prices.last_update) : 'oczekiwanie na pobranie'}${prices.error ? ` · ${prices.error}` : ''}. ` +
+      (prices.series || []).map(s => `${s.kind.toUpperCase()}: ${s.count} cen`).join(' · ');
+  } catch (error) { toast(`Ustawienia prosumenta: ${error.message}`, 'error'); }
+}
+
+function bindProsumerEvents() {
+  $('#prosumer-mode').addEventListener('change', syncProsumerFields);
+  $('#prosumer-add-balance').addEventListener('click', () => addProsumerBalance());
+  $('#prosumer-balances').addEventListener('click', event => event.target.closest('[data-remove-balance]')?.closest('.prosumer-balance-row').remove());
+  $('#prosumer-save').addEventListener('click', async () => {
+    try {
+      await api('api/prosumer', {method:'PUT', body:JSON.stringify(readProsumerSettings())});
+      $('#prosumer-save-status').textContent = 'Zapisano. Ustawienia zostaną użyte w kolejnej analizie.';
+    } catch (error) { toast(error.message, 'error'); }
+  });
+  $('#prosumer-refresh-prices').addEventListener('click', async () => {
+    try {
+      await api('api/prosumer/prices/refresh', {method:'POST'});
+      $('#prosumer-price-status').textContent = 'Zlecono odświeżenie cen w tle. Ponownie otwórz aplikację, aby zobaczyć stan bazy.';
+    } catch (error) { toast(error.message, 'error'); }
+  });
+}
+
+function renderProsumerLedger(tariff) {
+  const p = tariff.prosumer;
+  if (!p) return '';
+  const metering = p.mode === 'net_metering';
+  const quantity = value => `${formatNumber(value, metering ? 3 : 2)} ${p.unit}`;
+  return `<div class="prosumer-ledger"><h4>Rozliczenie prosumenta</h4>
+    <p class="muted small">Rachunek przed rozliczeniem: <strong>${formatPLN(p.purchase_gross_pln)}</strong> · Pomniejszenie rachunku: <strong>${formatPLN(p.credit_used_pln)}</strong> · Do zapłaty: <strong>${formatPLN(tariff.total_pln)}</strong></p>
+    <p class="muted small">Saldo końcowe: <strong>${quantity(p.closing_balance)}</strong> · Wygasło: ${quantity(p.expired)}${!metering ? ` · Potencjalny zwrot po wygaśnięciu: ${formatPLN(p.refundable_pln)} (nie odjęto od rachunku)` : ''}</p>
+    <div class="table-wrap"><table class="data-table"><thead><tr><th>Miesiąc</th><th>Pobór kWh</th><th>Eksport kWh</th><th>${metering ? 'Nowy opust' : 'Nowy depozyt'}</th><th>Wykorzystano</th><th>Wygasło</th><th>Saldo</th><th>Do zapłaty</th></tr></thead><tbody>
+    ${p.months.map(m => `<tr><td>${escapeHtml(m.month)}</td><td>${formatNumber(m.import_kwh,2)}</td><td>${formatNumber(m.export_kwh,2)}</td><td>${quantity(m.credit_created)}</td><td>${quantity(m.credit_used)}</td><td>${quantity(m.expired)}</td><td>${quantity(m.balance)}</td><td>${formatPLN(m.due_pln)}</td></tr>`).join('')}
+    </tbody></table></div><p class="muted small">${metering ? 'Tabela stref i pączek pokazują opłaty pozostałe po opuście. Opusty między strefami są symulowane dla każdej taryfy osobno.' : 'Tabela składników i pączek pokazują rachunek przed zapłatą z depozytu. Saldo obejmuje też nowy depozyt dostępny od następnego miesiąca. Zwrot jest szacunkiem limitu 20% (RCEm) / 30% (RCE), bez zwiększenia ×1,23.'}
+    ${p.months.some(m => m.refund_unknown) ? 'Nie wyliczono części zwrotu: brak pierwotnej wartości eksportu dla salda początkowego.' : ''}</p></div>`;
+}
+
 async function handleAnalyze(event) {
   event.preventDefault();
   if (state.busy) return;
@@ -551,6 +652,8 @@ async function handleAnalyze(event) {
   if (start > end) return toast('Data początkowa jest późniejsza niż końcowa.', 'error');
   if (!tariffIds.length) return toast('Zaznacz co najmniej jedną taryfę.', 'error');
 
+  let prosumer;
+  try { prosumer = readProsumerSettings(); } catch (error) { return toast(error.message, 'error'); }
   setAnalyzing(true);
   const status = $('#analyze-status');
   const startedAt = Date.now();
@@ -562,7 +665,7 @@ async function handleAnalyze(event) {
   try {
     const result = await api('api/analyze', {
       method: 'POST',
-      body: JSON.stringify({ entity_id: entityId, start, end, tariff_ids: tariffIds }),
+      body: JSON.stringify({ entity_id: entityId, start, end, tariff_ids: tariffIds, prosumer }),
     });
     state.analysis = result;
     try {
@@ -585,14 +688,14 @@ async function handleAnalyze(event) {
   }
 }
 
-function renderDataQuality(quality) {
+function renderDataQuality(quality, label = 'Kompletność danych') {
   if (!quality) return '<p class="muted small">Ta zapisana analiza nie ma informacji o kompletności. Wykonaj ją ponownie.</p>';
   const months = (quality.months || []).map((row) => `<tr>
     <td>${escapeHtml(row.month)}${row.partial_month ? ' · fragment miesiąca' : ''}</td>
     <td>${row.received_hours}/${row.expected_hours}</td><td>${row.percent == null ? '—' : `${formatNumber(row.percent, 2)}%`}</td>
     <td>${row.missing_hours ? `<strong class="coverage-warning">Brak ${row.missing_hours} godz.</strong>` : row.expected_hours ? 'Kompletne' : 'Oczekiwanie'}${row.pending_hours ? ` · ${row.pending_hours} godz. jeszcze niezakończonych` : ''}</td></tr>`).join('');
   const gaps = (quality.gaps || []).map((gap) => `<li>${escapeHtml(formatInstant(gap.start))} – ${escapeHtml(formatInstant(gap.end))} · ${gap.hours} godz.</li>`).join('');
-  return `<section class="card data-quality"><div class="card-head"><h3>Kompletność danych</h3>
+  return `<section class="card data-quality"><div class="card-head"><h3>${escapeHtml(label)}</h3>
       <strong class="${quality.missing_hours ? 'coverage-warning' : ''}">${quality.percent == null ? 'Oczekiwanie na zakończone godziny' : `${formatNumber(quality.percent, 2)}% godzin`}</strong></div>
     <p>${quality.received_hours} z ${quality.expected_hours} zakończonych godzin ma prawidłowe statystyki zużycia.
       ${quality.missing_hours ? `<strong class="coverage-warning">Brakuje ${quality.missing_hours} godzin. Koszty i ranking mogą się zmienić po uzupełnieniu danych.</strong>` : ''}</p>
@@ -725,11 +828,11 @@ function renderInvoiceDonut(tariff) {
     <strong>${formatPLN(item.amount)}</strong><span class="muted">${formatNumber(sum ? item.amount / sum * 100 : 0, 2)}%</span></li>`).join('');
   return `<section class="invoice-chart"><h4>Struktura potencjalnej faktury</h4>
     <div class="invoice-chart-layout"><div class="invoice-donut">
-      <svg viewBox="0 0 220 220" role="img" aria-label="${escapeHtml(`Składniki rachunku dla ${tariff.name}, razem ${formatPLN(tariff.total_pln)} brutto. Kwoty i udziały w legendzie.`)}">
+      <svg viewBox="0 0 220 220" role="img" aria-label="${escapeHtml(`Składniki rachunku dla ${tariff.name}, razem ${formatPLN(breakdown.total_pln ?? tariff.total_pln)} brutto. Kwoty i udziały w legendzie.`)}">
         <circle cx="110" cy="110" r="82" fill="none" stroke="var(--surface-3)" stroke-width="30"></circle>${arcs}</svg>
-      <div class="invoice-donut-center"><span>Razem brutto</span><strong>${formatPLN(tariff.total_pln)}</strong></div></div>
+      <div class="invoice-donut-center"><span>Razem brutto</span><strong>${formatPLN(breakdown.total_pln ?? tariff.total_pln)}</strong></div></div>
       <ul class="invoice-legend" aria-label="Składniki faktury, kwoty i udziały">${legend}</ul></div>
-    <p class="muted small">${sum ? 'Składniki netto i akcyza, VAT jako osobna pozycja. Kwoty zaokrąglone do groszy.' : 'Brak kosztów do przedstawienia na wykresie.'}
+    <p class="muted small">${sum ? 'Składniki netto i akcyza, VAT jako osobna pozycja. Kwoty zaokrąglone do groszy.' + (tariff.prosumer && tariff.prosumer.mode !== 'net_metering' ? ' Przed pokryciem części rachunku z depozytu.' : '') : 'Brak kosztów do przedstawienia na wykresie.'}
       ${detailed ? '' : 'Ta zapisana analiza ma opłaty zmienne i stałe zgrupowane. Wykonaj ją ponownie, aby zobaczyć poszczególne opłaty.'}</p>
     </section>`;
 }
@@ -845,9 +948,10 @@ function renderAnalysis(result) {
               ${tariff.capacity_fee ? `<p class="muted small">Opłata mocowa: ${formatPLN(tariff.capacity_fee.net_monthly)}/mies. netto.
                 Podstawa: ${formatNumber(tariff.capacity_fee.annual_kwh, 1)} kWh
                 (${tariff.capacity_fee.estimated ? 'szacunek roczny z wybranego okresu' : 'pobór wpisany w konfiguracji'}).</p>` : ''}
-              <p class="muted small" style="margin-top:10px">Szacunek w skali roku: <strong>${formatPLN(tariff.annual_pln)}</strong></p>
+              <p class="muted small" style="margin-top:10px">${result.prosumer ? 'Przeliczenie na rok' : 'Szacunek w skali roku'}: <strong>${formatPLN(tariff.annual_pln)}</strong></p>
             </div>
           </div>
+          ${renderProsumerLedger(tariff)}
           ${renderInvoiceDonut(tariff)}
         </div>
       </details>`;
@@ -956,7 +1060,7 @@ function renderAnalysis(result) {
     }).join('');
     const unavailable = monthlyCosts.filter((row) => row.unavailable_tariffs?.length).map((row) =>
       `<li><strong>${escapeHtml(monthLabel(row.month))}</strong>: ${row.unavailable_tariffs.map((cost) => `${escapeHtml(cost.name)} — ${escapeHtml(cost.error)}`).join('; ')}</li>`).join('');
-    monthlyCostChart = `<div class="card-head chart-heading"><h3>Koszty miesięczne</h3><span class="muted small">pełny rachunek brutto · zł</span></div>
+    monthlyCostChart = `<div class="card-head chart-heading"><h3>Koszty miesięczne</h3><span class="muted small">${result.prosumer ? 'do zapłaty po rozliczeniu · zł' : 'pełny rachunek brutto · zł'}</span></div>
       <div class="cost-legend"><span><i class="current"></i>Moja taryfa: ${escapeHtml(result.current_tariff_name)}</span>
         <span><i class="cheapest"></i>Najtańsza w całej analizie: ${escapeHtml(result.cheapest_tariff_name)}</span></div>
       <div class="cost-months">${costBars}</div>
@@ -980,7 +1084,8 @@ function renderAnalysis(result) {
     </div>
 
     ${warningBlock}
-    ${renderDataQuality(result.data_quality)}
+    ${result.prosumer ? `<div class="notice prosumer-summary"><strong>Symulacja prosumenta — ${escapeHtml(result.prosumer.settings.mode === 'net_metering' ? 'net-metering' : result.prosumer.settings.mode.toUpperCase())}</strong><p>Ranking i koszty miesięczne pokazują kwotę do zapłaty po rozliczeniu. Saldo końcowe pozostaje osobno. Eksport po bilansowaniu godzinowym: ${formatNumber(result.prosumer.export_kwh,2)} kWh.</p><p>Kompletność wspólnych godzin poboru i eksportu: ${formatNumber(result.prosumer.paired_quality.percent,1)}%${result.prosumer.incomplete ? ' — wynik niepełny' : ''}.</p></div>${renderDataQuality(result.prosumer.export_quality, 'Kompletność danych eksportu')}` : ''}
+    ${renderDataQuality(result.data_quality, result.prosumer ? 'Kompletność danych poboru' : 'Kompletność danych')}
 
     <div class="result-hero">
       <div class="hero-main">
@@ -990,8 +1095,8 @@ function renderAnalysis(result) {
         </h2>
         <p class="muted">${escapeHtml(cheapest.description || 'Taryfa własna.')}</p>
         <div class="hero-metrics">
-          <div><span>Koszt w okresie</span><strong>${formatPLN(cheapest.total_pln)}</strong></div>
-          <div><span>Szacunek roczny</span><strong>${formatPLN(cheapest.annual_pln)}</strong></div>
+          <div><span>${result.prosumer ? 'Do zapłaty w okresie' : 'Koszt w okresie'}</span><strong>${formatPLN(cheapest.total_pln)}</strong></div>
+          <div><span>${result.prosumer ? 'Przeliczenie na rok' : 'Szacunek roczny'}</span><strong>${formatPLN(cheapest.annual_pln)}</strong></div>
           <div><span>Średnia cena</span><strong>${formatNumber(cheapest.per_kwh_pln, 3)} zł/kWh</strong></div>
         </div>
       </div>
@@ -1001,7 +1106,7 @@ function renderAnalysis(result) {
     <section class="card">
       <div class="card-head">
         <h3>Porównanie kosztów</h3>
-        <span class="muted small">pełny rachunek z opłatami stałymi i VAT</span>
+        <span class="muted small">${result.prosumer ? 'do zapłaty po rozliczeniu prosumenta' : 'pełny rachunek z opłatami stałymi i VAT'}</span>
       </div>
       <div class="bars">${bars}</div>
     </section>
@@ -1693,6 +1798,7 @@ async function handleHistoryAction(event) {
       $('#date-end').value = result.end;
       $$('#quick-ranges button').forEach((button) => button.classList.remove('is-active'));
       updateEntityHint();
+      applyProsumerSettings(result.prosumer?.settings || {mode:'off'});
 
       renderAnalysis(result);
       switchTab('analysis');
@@ -1760,12 +1866,14 @@ async function init() {
   bindTheme();
   bindEvents();
   bindSensorEvents();
+  bindProsumerEvents();
   bindChartTooltips();
   bindInvoiceLegendHover();
   setDateRange(addDays(today(), -29), today());
 
   await loadConfig();
   await Promise.allSettled([loadEntities(), loadTariffs()]);
+  await loadProsumer();
   await loadHistory();
 
   const hash = window.location.hash.replace('#', '');

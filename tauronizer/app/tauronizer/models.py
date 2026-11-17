@@ -106,11 +106,41 @@ class TariffUpdate(TariffCreate):
     pass
 
 
+class ProsumerBalance(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+    month: str = Field(pattern=r'^\d{4}-(0[1-9]|1[0-2])$')
+    amount: float = Field(gt=0, le=1e9, allow_inf_nan=False)
+    zone_id: str | None = Field(default=None, max_length=40)
+    export_value_pln: float | None = Field(default=None, ge=0, le=1e9, allow_inf_nan=False)
+
+    @field_validator('month')
+    @classmethod
+    def _month(cls, value):
+        date.fromisoformat(value + '-01')
+        return value
+
+
+class ProsumerSettings(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+    mode: Literal['off', 'net_metering', 'rcem', 'rce'] = 'off'
+    export_entity_id: str | None = Field(default=None, max_length=255)
+    ratio: Literal[0.8, 0.7] = 0.8
+    opening_balances: list[ProsumerBalance] = Field(default_factory=list, max_length=120)
+
+    @field_validator('export_entity_id')
+    @classmethod
+    def _export_entity(cls, value):
+        if value is not None and not ENTITY_RE.fullmatch(value):
+            raise ValueError('Nieprawidłowa encja eksportu energii.')
+        return value
+
+
 class AnalyzeRequest(BaseModel):
     entity_id: str = Field(min_length=3, max_length=255)
     start: date
     end: date
     tariff_ids: list[str] = Field(default_factory=list, max_length=20)
+    prosumer: ProsumerSettings | None = None
 
     @field_validator("entity_id")
     @classmethod

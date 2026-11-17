@@ -1965,3 +1965,16 @@ select.input {
 .heatmap-cell { background-color: var(--heatmap-base, var(--surface-3)); background-image: linear-gradient(var(--heatmap-color, transparent), var(--heatmap-color, transparent)); }
 .heatmap-cell.no-data { background-color: var(--surface-3); background-image: repeating-linear-gradient(135deg, var(--surface-3), var(--surface-3) 4px, var(--surface) 4px, var(--surface) 8px); }
 .month-heatmap-cell:focus-visible { transform: scale(1.18); position: relative; z-index: 1; }
+
+/* Prosumer configuration and monthly settlement share existing form/table styles. */
+.prosumer-settings { margin: 18px 0; }
+.prosumer-settings summary { gap: 12px; }
+.prosumer-balance-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; align-items: end; margin-bottom: 12px; }
+.prosumer-balance-row .field { margin: 0; }
+.prosumer-ledger { margin-top: 24px; }
+.prosumer-ledger h4 { margin-bottom: 12px; }
+@media (max-width: 700px) { .prosumer-balance-row { grid-template-columns: 1fr 1fr; } }
+
+.prosumer-summary { display: block; }
+.prosumer-summary p { margin: 8px 0 0; }
+.prosumer-settings [hidden] { display: none !important; }

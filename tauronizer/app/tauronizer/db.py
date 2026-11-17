@@ -46,6 +46,13 @@ CREATE TABLE IF NOT EXISTS settings (
     value TEXT NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS export_prices (
+    kind TEXT NOT NULL CHECK(kind IN ('rce','rcem')),
+    stamp TEXT NOT NULL,
+    price_mwh REAL NOT NULL,
+    publication TEXT NOT NULL,
+    PRIMARY KEY(kind, stamp)
+);
 CREATE TABLE IF NOT EXISTS kompas_hours (
     utc_hour TEXT PRIMARY KEY,
     business_date TEXT NOT NULL,
@@ -119,7 +126,7 @@ def init_db() -> None:
             elif _get_setting(connection, "presets_version") != str(PRESET_VERSION):
                 _upgrade_presets(connection)
             _set_setting(connection, "presets_version", str(PRESET_VERSION))
-            _set_setting(connection, "schema_version", "2")
+            _set_setting(connection, "schema_version", "3")
 
 
 def _upgrade_presets(connection: sqlite3.Connection) -> None:
@@ -477,3 +484,27 @@ def kompas_levels_between(start_utc: str, end_utc: str) -> dict[str, int]:
         return {row['utc_hour']: row['level'] for row in connection.execute(
             'SELECT utc_hour,level FROM kompas_hours WHERE utc_hour>=? AND utc_hour<? ORDER BY utc_hour',
             (start_utc, end_utc))}
+
+
+def save_export_prices(kind: str, rows: list[dict], checkpoint: dict | None = None) -> None:
+    with _connect() as connection, connection:
+        connection.executemany(
+            'INSERT INTO export_prices(kind,stamp,price_mwh,publication) VALUES(?,?,?,?) '
+            'ON CONFLICT(kind,stamp) DO UPDATE SET price_mwh=excluded.price_mwh,publication=excluded.publication '
+            'WHERE excluded.publication >= export_prices.publication',
+            [(kind, r['stamp'], r['price_mwh'], r['publication']) for r in rows])
+        for key, value in (checkpoint or {}).items():
+            _set_setting(connection, key, value)
+
+
+def export_prices(kind: str, start: str, end: str) -> dict[str, float]:
+    with _connect() as connection:
+        return {r['stamp']: r['price_mwh'] for r in connection.execute(
+            'SELECT stamp,price_mwh FROM export_prices WHERE kind=? AND stamp>=? AND stamp<?',
+            (kind, start, end))}
+
+
+def export_price_summary() -> list[dict]:
+    with _connect() as connection:
+        return [dict(r) for r in connection.execute(
+            'SELECT kind,COUNT(*) AS count,MIN(stamp) AS first,MAX(stamp) AS last FROM export_prices GROUP BY kind')]

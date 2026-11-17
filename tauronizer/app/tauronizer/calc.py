@@ -186,6 +186,7 @@ def analyze(
     start_date: date,
     end_date: date,
     current_tariff: dict[str, Any] | None = None,
+    prosumer_calculation=None,
 ) -> dict[str, Any]:
     """Compare the cost of every tariff for a consumption profile.
 
@@ -245,6 +246,10 @@ def analyze(
             if tariff["id"] in compile_errors:
                 raise TariffValidationError(compile_errors[tariff["id"]])
             zones = compiled[tariff["id"]]
+            if prosumer_calculation:
+                cost, _ = prosumer_calculation.calculate(tariff, zones, holidays, dynamic_levels)
+                results.append(cost)
+                continue
             results.append(
                 _cost_for_tariff(
                     tariff, zones, local_samples, holidays, total_kwh, days, dynamic_levels
@@ -287,10 +292,14 @@ def analyze(
                     raise ValueError("Brak statystyk zużycia w tym miesiącu.")
                 if tariff["id"] in compile_errors:
                     raise TariffValidationError(compile_errors[tariff["id"]])
-                cost = _cost_for_tariff(
-                    tariff, compiled[tariff["id"]], month_samples, holidays,
-                    monthly[month], month_days, dynamic_levels, (total_kwh, days),
-                )
+                if prosumer_calculation:
+                    _, costs_by_month = prosumer_calculation.calculate(tariff, compiled[tariff["id"]], holidays, dynamic_levels)
+                    cost = costs_by_month[month]
+                else:
+                    cost = _cost_for_tariff(
+                        tariff, compiled[tariff["id"]], month_samples, holidays,
+                        monthly[month], month_days, dynamic_levels, (total_kwh, days),
+                    )
             except Exception as exc:
                 cost = _empty_result(tariff, str(exc))
             costs.append({key: cost[key] for key in ("tariff_id", "name", "total_pln", "error")})

@@ -4,3 +4,5 @@ import pytest
 @pytest.fixture(autouse=True)
 def disable_live_kompas(monkeypatch):
     monkeypatch.setenv('KOMPAS_AUTO_SYNC', '0')
+
+    monkeypatch.setenv('EXPORT_PRICES_AUTO_SYNC', '0')
